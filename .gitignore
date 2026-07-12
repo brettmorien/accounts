@@ -1,0 +1,20 @@
+# Sensitive: balances and sync state never leave the machine.
+data/
+
+# Historical exports and the account map are personal financial data.
+import/*.csv
+import/account_map.json
+
+# Generated dashboard (contains balances).
+dashboard.html
+
+# launchd agent (generated locally).
+*.plist
+
+# Never commit anything that could hold the Access URL.
+*.token
+*.secret
+
+# Python.
+__pycache__/
+*.pyc

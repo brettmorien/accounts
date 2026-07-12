@@ -1,0 +1,26 @@
+{
+  "errors": [],
+  "accounts": [
+    {
+      "id": "ACT-fid-401k",
+      "name": "401(k)",
+      "currency": "USD",
+      "balance": "158200.42",
+      "org": { "name": "Fidelity", "domain": "fidelity.com" }
+    },
+    {
+      "id": "ACT-van-roth",
+      "name": "Roth IRA",
+      "currency": "USD",
+      "balance": "91340.10",
+      "org": { "name": "Vanguard", "domain": "vanguard.com" }
+    },
+    {
+      "id": "ACT-schwab-brk",
+      "name": "Brokerage",
+      "currency": "USD",
+      "balance": "47990.00",
+      "org": { "name": "Charles Schwab", "domain": "schwab.com" }
+    }
+  ]
+}
