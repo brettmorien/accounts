@@ -17,8 +17,10 @@ Two shapes are supported:
 Everything flows through the idempotent store, so re-dropping files is harmless.
 """
 import csv
+import io
 import json
 import re
+from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -155,6 +157,27 @@ def _detect_table(rows: List[List[str]]):
 # File -> rows
 # ---------------------------------------------------------------------------
 
+def _sniff_delimiter(lines: List[str]) -> str:
+    """Pick the delimiter (tab/comma/semicolon/pipe) that parses the sample most
+    consistently. Vanguard exports as tab-separated with commas inside values, so
+    naive comma parsing shreds them; this recovers the right delimiter per file.
+    """
+    rows = [ln for ln in lines if ln.strip()]
+    best, best_key = ",", (0.0, 0)
+    for delim in ("\t", ",", ";", "|"):
+        counts = [len(next(csv.reader([ln], delimiter=delim))) for ln in rows]
+        if not counts:
+            continue
+        modal, modal_n = Counter(counts).most_common(1)[0]
+        if modal <= 1:
+            continue
+        # Consistency first (fraction of rows at the modal width), then width.
+        key = (round(modal_n / len(counts), 2), modal)
+        if key > best_key:
+            best_key, best = key, delim
+    return best
+
+
 def _slug(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", label.strip().lower()).strip("-") or "unknown"
 
@@ -190,7 +213,9 @@ def ingest_files() -> Tuple[List[dict], List[dict], List[str]]:
     for path in sorted(config.IMPORT_DIR.glob("*.csv")):
         try:
             with path.open(newline="", encoding="utf-8-sig") as fh:
-                rows = list(csv.reader(fh))
+                text = fh.read()
+            delim = _sniff_delimiter(text.splitlines()[:40])
+            rows = list(csv.reader(io.StringIO(text), delimiter=delim))
         except OSError as exc:
             warnings.append(f"{path.name}: {exc}")
             continue
