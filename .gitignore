@@ -1,9 +1,10 @@
 # Sensitive: balances and sync state never leave the machine.
 data/
 
-# Historical exports and the account map are personal financial data.
-import/*.csv
-import/account_map.json
+# Everything in import/ is personal financial data (csv, tsv, json, pdf, ...).
+# Ignore all of it, keeping only the format documentation.
+import/*
+!import/README.txt
 
 # Generated dashboard (contains balances).
 dashboard.html
