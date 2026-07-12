@@ -217,6 +217,15 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
   th, td {{ text-align: right; padding: 7px 10px; border-bottom: 1px solid #f0f0f2; }}
   th:first-child, td:first-child {{ text-align: left; }}
   .up {{ color: #16a34a; }} .down {{ color: #dc2626; }}
+  .hint {{ font-size: 12px; color: #71717a; margin: 2px 0 6px; }}
+  .legend {{ margin-top: 10px; }}
+  .legend .chip {{ display: inline-flex; align-items: center; gap: 5px;
+        margin: 0 14px 6px 0; cursor: pointer; font-size: 12px; user-select: none; }}
+  .legend .chip i {{ width: 11px; height: 11px; border-radius: 2px;
+        display: inline-block; flex: none; }}
+  .legend .chip .cv {{ color: #71717a; }}
+  .legend .chip.dim {{ opacity: .32; }}
+  .legend .chip.sel b {{ text-decoration: underline; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
@@ -240,7 +249,9 @@ def _uplot_html(model: dict) -> str:
        <div class="big" id="grand"></div>
        <div id="chart-total"></div></div>
   <div class="card"><div class="muted">Composition over time</div>
-       <div id="chart-comp"></div></div>
+       <div class="hint">Click an account to show only that one; click it again to restore all.</div>
+       <div id="chart-comp"></div>
+       <div id="comp-legend" class="legend"></div></div>
   <div class="card"><div class="muted">Accounts</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
@@ -273,19 +284,64 @@ mk(document.getElementById('chart-total'),
              fill:'rgba(37,99,235,0.14)', value:(u,v)=>usd(v) }} ],
    [ DATA.x, DATA.total ]);
 
-// Composition (stacked areas via opaque cumulative fills, tallest drawn first)
+// Composition: stacked cumulative areas by default. A custom legend (below)
+// lets you click an account to isolate it -- shown as its OWN value, not the
+// cumulative band -- and click again to restore the full stack.
 const C = DATA.comp;
 const compSeries = [ {{}} ];
 const compData = [ DATA.x ];
 for (let i=0; i<C.labels.length; i++) {{
-  compSeries.push({{
-    label: C.labels[i], stroke: C.colors[i], width: 1,
-    fill: C.colors[i] + 'd9',
-    value: (u, _v, sIdx, dIdx) => usd(C.contrib[sIdx-1][dIdx]),
-  }});
+  compSeries.push({{ label: C.labels[i], stroke: C.colors[i], width: 1,
+                     fill: C.colors[i] + 'd9' }});
   compData.push(C.cumulative[i]);
 }}
-mk(document.getElementById('chart-comp'), compSeries, compData);
+const uComp = mk(document.getElementById('chart-comp'), compSeries, compData, {{
+  legend: {{ show: false }},
+  hooks: {{ setCursor: [ u => compHoverValues(u) ] }},
+}});
+
+let isolated = null;
+const legendBox = document.getElementById('comp-legend');
+C.labels.forEach((label, k) => {{
+  const s = k + 1;                       // uPlot series index (0 = x)
+  const chip = document.createElement('span');
+  chip.className = 'chip';
+  chip.dataset.s = s;
+  chip.innerHTML = `<i style="background:${{C.colors[k]}}"></i>`
+    + `<b></b> <span class="cv"></span>`;
+  chip.querySelector('b').textContent = label;   // textContent avoids HTML injection
+  chip.addEventListener('click', () => compToggle(s));
+  legendBox.appendChild(chip);
+}});
+
+function compToggle(s) {{
+  const restore = (isolated === s);
+  isolated = restore ? null : s;
+  uComp.batch(() => {{
+    for (let i = 1; i < uComp.series.length; i++)
+      uComp.setSeries(i, {{ show: restore ? true : i === s }});
+    if (restore) {{
+      uComp.setData(compData);
+    }} else {{
+      const nd = compData.map(a => a.slice());
+      nd[s] = C.contrib[s - 1].slice();  // isolated series shows its own value
+      uComp.setData(nd);
+    }}
+  }});
+  legendBox.querySelectorAll('.chip').forEach(c => {{
+    const sel = !restore && +c.dataset.s === s;
+    c.classList.toggle('sel', sel);
+    c.classList.toggle('dim', !restore && !sel);
+  }});
+}}
+
+function compHoverValues(u) {{
+  const idx = u.cursor.idx;
+  legendBox.querySelectorAll('.chip').forEach(c => {{
+    const k = (+c.dataset.s) - 1;
+    c.querySelector('.cv').textContent = (idx == null) ? '' : usd(C.contrib[k][idx]);
+  }});
+}}
 
 // Table
 const tb = document.querySelector('#tbl tbody');
