@@ -153,6 +153,11 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
     x = [int(dt.datetime.strptime(d, "%Y-%m-%d")
              .replace(tzinfo=dt.timezone.utc).timestamp()) for d in dates]
 
+    # Reserve enough y-axis gutter for the widest "$1,234,567"-style tick label,
+    # sized from the peak value so large balances are not clipped.
+    peak = max(total) if total else 0.0
+    ysize = max(56, int(len(f"${int(round(peak)):,}") * 7.5) + 22)
+
     return {
         "empty": False,
         "x": x,
@@ -165,6 +170,7 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
             "contrib": comp_contrib,
         },
         "table": table,
+        "ysize": ysize,
         "generated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "grand_total": total[-1] if total else 0.0,
     }
@@ -251,7 +257,7 @@ function mk(el, series, data, extra) {{
   const opts = Object.assign({{
     width: el.clientWidth || 900, height: 340,
     scales: {{ x: {{ time: true }} }},
-    axes: [ {{}}, {{ values: (u,vals)=>vals.map(usd) }} ],
+    axes: [ {{}}, {{ size: DATA.ysize, values: (u,vals)=>vals.map(usd) }} ],
     legend: {{ live: true }},
     series: series,
   }}, extra || {{}});
