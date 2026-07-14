@@ -386,8 +386,9 @@ const projSeries = [ {{}},
   {{ label: 'History', stroke: '#2563eb', width: 2, fill: 'rgba(37,99,235,0.10)', value: (u,v)=>usd(v) }},
   {{ label: 'Projected (nominal)', stroke: '#7c3aed', width: 2, dash: [6,4], value: (u,v)=>usd(v) }},
   {{ label: "Projected (today's $)", stroke: '#0891b2', width: 2, dash: [2,4], value: (u,v)=>usd(v) }} ];
+// uPlot passes already-formatted tick strings here (but tolerate raw numbers too).
 const ysizeFn = (u, vals) => Math.max(70,
-  (vals||[]).reduce((a,b)=>Math.max(a, usd(b).length), 0) * 7.5 + 18);
+  (vals||[]).reduce((a,b)=>Math.max(a, (typeof b === 'number' ? usd(b) : String(b)).length), 0) * 8 + 22);
 const uProj = new uPlot({{
   width: projEl.clientWidth || 900, height: 340, scales: {{ x: {{ time: true }} }},
   axes: [ {{}}, {{ size: ysizeFn, values: (u,vals)=>vals.map(usd) }} ],
