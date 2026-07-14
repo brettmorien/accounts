@@ -226,6 +226,10 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
   .legend .chip .cv {{ color: #71717a; }}
   .legend .chip.dim {{ opacity: .32; }}
   .legend .chip.sel b {{ text-decoration: underline; }}
+  .controls {{ display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+        margin: 6px 0 10px; font-size: 12px; }}
+  .controls label {{ display: inline-flex; align-items: center; gap: 6px; }}
+  .controls input[type=number] {{ width: 76px; padding: 2px 4px; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
@@ -252,6 +256,17 @@ def _uplot_html(model: dict) -> str:
        <div class="hint">Click an account to show only that one; click it again to restore all.</div>
        <div id="chart-comp"></div>
        <div id="comp-legend" class="legend"></div></div>
+  <div class="card"><div class="muted">Projection</div>
+       <div class="controls">
+         <label>To year <input type="range" id="p-year" min="2027" max="2080" value="2060">
+                <b id="p-year-val">2060</b></label>
+         <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
+         <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
+         <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
+         <label><input type="checkbox" id="p-real"> Show in today's dollars</label>
+       </div>
+       <div id="chart-proj"></div>
+       <div class="muted" id="proj-summary" style="margin-top:8px"></div></div>
   <div class="card"><div class="muted">Accounts</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
@@ -354,6 +369,70 @@ for (const r of DATA.table) {{
     + `<td class="${{cls}}">${{r.delta==null?'—':sign+usd(r.delta)}}</td>`
     + `<td class="${{cls}}">${{r.pct==null?'—':sign+r.pct+'%'}}</td></tr>`);
 }}
+
+// ---- Projection: extend the net-worth line to a chosen year, with an optional
+// inflation-adjusted ("today's dollars") overlay. All computed in the browser.
+const projEl = document.getElementById('chart-proj');
+const gid = id => document.getElementById(id);
+const anchorTs = DATA.x[DATA.x.length - 1];   // latest history timestamp (sec)
+const anchorVal = DATA.grand_total;           // latest total net worth
+const anchorDate = new Date(anchorTs * 1000);
+const thisYear = anchorDate.getUTCFullYear();
+gid('p-year').min = thisYear + 1;
+if (+gid('p-year').value <= thisYear) gid('p-year').value = Math.min(2080, thisYear + 30);
+
+const projSeries = [ {{}},
+  {{ label: 'History', stroke: '#2563eb', width: 2, fill: 'rgba(37,99,235,0.10)', value: (u,v)=>usd(v) }},
+  {{ label: 'Projected (nominal)', stroke: '#7c3aed', width: 2, dash: [6,4], value: (u,v)=>usd(v) }},
+  {{ label: "Projected (today's $)", stroke: '#0891b2', width: 2, dash: [2,4], value: (u,v)=>usd(v) }} ];
+const ysizeFn = (u, vals) => Math.max(70,
+  (vals||[]).reduce((a,b)=>Math.max(a, usd(b).length), 0) * 7.5 + 18);
+const uProj = new uPlot({{
+  width: projEl.clientWidth || 900, height: 340, scales: {{ x: {{ time: true }} }},
+  axes: [ {{}}, {{ size: ysizeFn, values: (u,vals)=>vals.map(usd) }} ],
+  legend: {{ live: true }}, series: projSeries,
+}}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
+new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340 }})).observe(projEl);
+
+function buildProjection() {{
+  const endYear = Math.max(thisYear + 1, Math.min(2080, +gid('p-year').value || (thisYear + 30)));
+  gid('p-year-val').textContent = endYear;
+  const r = (+gid('p-return').value || 0) / 100;
+  const c = +gid('p-contrib').value || 0;
+  const infl = (+gid('p-infl').value || 0) / 100;
+  const showReal = gid('p-real').checked;
+  const years = endYear - thisYear;
+
+  const futTs = [], nominal = [], real = [];
+  for (let t = 1; t <= years; t++) {{
+    const ms = Date.UTC(thisYear + t, anchorDate.getUTCMonth(), anchorDate.getUTCDate());
+    // FV of current balance plus an annual-contribution annuity.
+    const grown = anchorVal * Math.pow(1 + r, t)
+                + (r > 0 ? c * ((Math.pow(1 + r, t) - 1) / r) : c * t);
+    futTs.push(Math.floor(ms / 1000));
+    nominal.push(grown);
+    real.push(grown / Math.pow(1 + infl, t));   // deflate to today's purchasing power
+  }}
+  const nHist = DATA.x.length;
+  const nom = DATA.x.map(()=>null); nom[nHist - 1] = anchorVal;   // anchor at latest point
+  const rl  = DATA.x.map(()=>null); rl[nHist - 1]  = anchorVal;
+  uProj.setData([ DATA.x.concat(futTs),
+                  DATA.total.concat(futTs.map(()=>null)),
+                  nom.concat(nominal),
+                  rl.concat(real) ]);
+  uProj.setSeries(3, {{ show: showReal }});
+
+  const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
+  const endReal = real.length ? real[real.length - 1] : anchorVal;
+  gid('proj-summary').textContent =
+    'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
+    + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
+    + (c ? ', ' + usd(c) + '/yr added' : '')
+    + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
+}}
+['p-year','p-return','p-contrib','p-infl','p-real'].forEach(
+  id => gid(id).addEventListener('input', buildProjection));
+buildProjection();
 </script>
 """
     return _shell("Investment Trends", body, head=head, script=script)
