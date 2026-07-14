@@ -280,11 +280,21 @@ const DATA = {data_json};
 const usd = v => v==null ? '' : '$' + Math.round(v).toLocaleString('en-US');
 document.getElementById('grand').textContent = usd(DATA.grand_total);
 
+// uPlot draws axis text on <canvas>, which CSS can't recolor, so pick readable
+// axis/grid colors for the viewer's current color scheme.
+const DARK = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+const AXIS_STROKE = DARK ? '#a1a1aa' : '#52525b';
+const GRID_STROKE = DARK ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)';
+const xAxis = () => ({{ stroke: AXIS_STROKE, grid: {{ stroke: GRID_STROKE, width: 1 }},
+                        ticks: {{ stroke: GRID_STROKE, width: 1 }} }});
+const yAxis = extra => Object.assign({{ stroke: AXIS_STROKE, grid: {{ stroke: GRID_STROKE, width: 1 }},
+                        ticks: {{ stroke: GRID_STROKE, width: 1 }} }}, extra || {{}});
+
 function mk(el, series, data, extra) {{
   const opts = Object.assign({{
     width: el.clientWidth || 900, height: 340,
     scales: {{ x: {{ time: true }} }},
-    axes: [ {{}}, {{ size: DATA.ysize, values: (u,vals)=>vals.map(usd) }} ],
+    axes: [ xAxis(), yAxis({{ size: DATA.ysize, values: (u,vals)=>vals.map(usd) }}) ],
     legend: {{ live: true }},
     series: series,
   }}, extra || {{}});
@@ -391,7 +401,7 @@ const ysizeFn = (u, vals) => Math.max(70,
   (vals||[]).reduce((a,b)=>Math.max(a, (typeof b === 'number' ? usd(b) : String(b)).length), 0) * 8 + 22);
 const uProj = new uPlot({{
   width: projEl.clientWidth || 900, height: 340, scales: {{ x: {{ time: true }} }},
-  axes: [ {{}}, {{ size: ysizeFn, values: (u,vals)=>vals.map(usd) }} ],
+  axes: [ xAxis(), yAxis({{ size: ysizeFn, values: (u,vals)=>vals.map(usd) }}) ],
   legend: {{ live: true }}, series: projSeries,
 }}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
 new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340 }})).observe(projEl);
