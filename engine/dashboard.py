@@ -261,7 +261,8 @@ def _uplot_html(model: dict) -> str:
          <label>To year <input type="range" id="p-year" min="2027" max="2080" value="2060">
                 <b id="p-year-val">2060</b></label>
          <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
-         <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
+         <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
+                until <input type="number" id="p-contrib-until" value="2050" step="1" min="2027" max="2080"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
          <label><input type="checkbox" id="p-real"> Show in today's dollars</label>
        </div>
@@ -402,13 +403,17 @@ function buildProjection() {{
   const infl = (+gid('p-infl').value || 0) / 100;
   const showReal = gid('p-real').checked;
   const years = endYear - thisYear;
+  // Contributions stop after this many years, then the balance keeps compounding.
+  const tStop = Math.max(0, Math.min(years, (+gid('p-contrib-until').value || endYear) - thisYear));
 
   const futTs = [], nominal = [], real = [];
   for (let t = 1; t <= years; t++) {{
     const ms = Date.UTC(thisYear + t, anchorDate.getUTCMonth(), anchorDate.getUTCDate());
-    // FV of current balance plus an annual-contribution annuity.
-    const grown = anchorVal * Math.pow(1 + r, t)
-                + (r > 0 ? c * ((Math.pow(1 + r, t) - 1) / r) : c * t);
+    // Value when contributions stop (capT = min(t, tStop)), then compounded to t.
+    const capT = Math.min(t, tStop);
+    const atCap = anchorVal * Math.pow(1 + r, capT)
+                + (r > 0 ? c * ((Math.pow(1 + r, capT) - 1) / r) : c * capT);
+    const grown = atCap * Math.pow(1 + r, t - capT);
     futTs.push(Math.floor(ms / 1000));
     nominal.push(grown);
     real.push(grown / Math.pow(1 + infl, t));   // deflate to today's purchasing power
@@ -427,10 +432,10 @@ function buildProjection() {{
   gid('proj-summary').textContent =
     'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
     + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
-    + (c ? ', ' + usd(c) + '/yr added' : '')
+    + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
     + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
 }}
-['p-year','p-return','p-contrib','p-infl','p-real'].forEach(
+['p-year','p-return','p-contrib','p-contrib-until','p-infl','p-real'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
 buildProjection();
 </script>
