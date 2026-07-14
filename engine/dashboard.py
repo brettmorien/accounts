@@ -263,7 +263,7 @@ def _uplot_html(model: dict) -> str:
          <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
          <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
                 until <input type="number" id="p-contrib-until" value="2050" step="1" min="2027" max="2080"></label>
-         <label>then withdraw %/yr <input type="number" id="p-withdraw" value="0" step="0.5" min="0" max="20"></label>
+         <label>then withdraw $/yr (today's $) <input type="number" id="p-withdraw" value="0" step="1000" min="0"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
        </div>
        <div id="chart-proj"></div>
@@ -401,24 +401,26 @@ function buildProjection() {{
   gid('p-year-val').textContent = endYear;
   const r = (+gid('p-return').value || 0) / 100;
   const c = +gid('p-contrib').value || 0;
-  const w = (+gid('p-withdraw').value || 0) / 100;   // yearly withdrawal after contributions stop
+  const W = +gid('p-withdraw').value || 0;   // yearly withdrawal in today's $, after contributions stop
   const infl = (+gid('p-infl').value || 0) / 100;
   const years = endYear - thisYear;
   // Contributions stop after this many years, then the balance keeps compounding.
   const tStop = Math.max(0, Math.min(years, (+gid('p-contrib-until').value || endYear) - thisYear));
 
   const futTs = [], nominal = [], real = [];
+  let bal = anchorVal, depletedYear = null;
   for (let t = 1; t <= years; t++) {{
     const ms = Date.UTC(thisYear + t, anchorDate.getUTCMonth(), anchorDate.getUTCDate());
-    // Value when contributions stop (capT = min(t, tStop)), then compounded to t.
-    const capT = Math.min(t, tStop);
-    const atCap = anchorVal * Math.pow(1 + r, capT)
-                + (r > 0 ? c * ((Math.pow(1 + r, capT) - 1) / r) : c * capT);
-    // After contributions stop, grow then withdraw w% each year: factor (1+r)(1-w).
-    const grown = atCap * Math.pow((1 + r) * (1 - w), t - capT);
+    bal *= (1 + r);                          // one year of growth
+    if (t <= tStop) {{
+      bal += c;                              // accumulation: add contribution (end of year)
+    }} else if (W > 0) {{
+      bal -= W * Math.pow(1 + infl, t);      // drawdown: fixed today's-$ amount, inflated to year t
+      if (bal <= 0) {{ bal = 0; if (depletedYear === null) depletedYear = thisYear + t; }}
+    }}
     futTs.push(Math.floor(ms / 1000));
-    nominal.push(grown);
-    real.push(grown / Math.pow(1 + infl, t));   // deflate to today's purchasing power
+    nominal.push(bal);
+    real.push(bal / Math.pow(1 + infl, t));  // deflate to today's purchasing power
   }}
   const nHist = DATA.x.length;
   const nom = DATA.x.map(()=>null); nom[nHist - 1] = anchorVal;   // anchor at latest point
@@ -434,16 +436,15 @@ function buildProjection() {{
     'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
     + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
     + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
-    + (w ? ', then withdrawing ' + (w * 100).toFixed(1) + '%/yr' : '')
+    + (W ? ", then withdrawing " + usd(W) + "/yr (today's $)" : '')
     + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
-  if (w > 0 && tStop < years) {{
-    // Annual withdrawal is w% of that year's pre-withdrawal balance = balance*w/(1-w).
-    const wdFirst = nominal[tStop] * w / (1 - w);        // first drawdown year (tStop+1)
-    const wdLast  = nominal[years - 1] * w / (1 - w);    // end year
-    summary += ' Withdrawal ≈ ' + usd(wdFirst) + '/yr in ' + (thisYear + tStop + 1)
-      + ' (' + usd(wdFirst / Math.pow(1 + infl, tStop + 1)) + " in today's $), then "
-      + usd(wdLast) + '/yr by ' + endYear
-      + ' (' + usd(wdLast / Math.pow(1 + infl, years)) + " in today's $).";
+  if (W > 0 && tStop < years) {{
+    // Fixed real withdrawal; its nominal amount grows with inflation each year.
+    const nomFirst = W * Math.pow(1 + infl, tStop + 1);   // first drawdown year (tStop+1)
+    const nomLast  = W * Math.pow(1 + infl, years);       // end year
+    summary += ' Withdrawal ' + usd(W) + "/yr in today's $ = " + usd(nomFirst)
+      + ' in ' + (thisYear + tStop + 1) + ' → ' + usd(nomLast) + ' by ' + endYear + ' nominal.'
+      + (depletedYear ? ' ⚠ Runs out ~' + depletedYear + '.' : '');
   }}
   gid('proj-summary').textContent = summary;
 }}
