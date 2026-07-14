@@ -263,6 +263,7 @@ def _uplot_html(model: dict) -> str:
          <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
          <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
                 until <input type="number" id="p-contrib-until" value="2050" step="1" min="2027" max="2080"></label>
+         <label>then withdraw %/yr <input type="number" id="p-withdraw" value="0" step="0.5" min="0" max="20"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
          <label><input type="checkbox" id="p-real"> Show in today's dollars</label>
        </div>
@@ -401,6 +402,7 @@ function buildProjection() {{
   gid('p-year-val').textContent = endYear;
   const r = (+gid('p-return').value || 0) / 100;
   const c = +gid('p-contrib').value || 0;
+  const w = (+gid('p-withdraw').value || 0) / 100;   // yearly withdrawal after contributions stop
   const infl = (+gid('p-infl').value || 0) / 100;
   const showReal = gid('p-real').checked;
   const years = endYear - thisYear;
@@ -414,7 +416,8 @@ function buildProjection() {{
     const capT = Math.min(t, tStop);
     const atCap = anchorVal * Math.pow(1 + r, capT)
                 + (r > 0 ? c * ((Math.pow(1 + r, capT) - 1) / r) : c * capT);
-    const grown = atCap * Math.pow(1 + r, t - capT);
+    // After contributions stop, grow then withdraw w% each year: factor (1+r)(1-w).
+    const grown = atCap * Math.pow((1 + r) * (1 - w), t - capT);
     futTs.push(Math.floor(ms / 1000));
     nominal.push(grown);
     real.push(grown / Math.pow(1 + infl, t));   // deflate to today's purchasing power
@@ -434,9 +437,10 @@ function buildProjection() {{
     'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
     + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
     + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
+    + (w ? ', then withdrawing ' + (w * 100).toFixed(1) + '%/yr' : '')
     + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
 }}
-['p-year','p-return','p-contrib','p-contrib-until','p-infl','p-real'].forEach(
+['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-real'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
 buildProjection();
 </script>
