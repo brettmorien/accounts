@@ -433,12 +433,22 @@ function buildProjection() {{
 
   const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
   const endReal = real.length ? real[real.length - 1] : anchorVal;
-  gid('proj-summary').textContent =
+  let summary =
     'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
     + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
     + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
     + (w ? ', then withdrawing ' + (w * 100).toFixed(1) + '%/yr' : '')
     + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
+  if (w > 0 && tStop < years) {{
+    // Annual withdrawal is w% of that year's pre-withdrawal balance = balance*w/(1-w).
+    const wdFirst = nominal[tStop] * w / (1 - w);        // first drawdown year (tStop+1)
+    const wdLast  = nominal[years - 1] * w / (1 - w);    // end year
+    summary += ' Withdrawal ≈ ' + usd(wdFirst) + '/yr in ' + (thisYear + tStop + 1)
+      + ' (' + usd(wdFirst / Math.pow(1 + infl, tStop + 1)) + " in today's $), then "
+      + usd(wdLast) + '/yr by ' + endYear
+      + ' (' + usd(wdLast / Math.pow(1 + infl, years)) + " in today's $).";
+  }}
+  gid('proj-summary').textContent = summary;
 }}
 ['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-real'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
