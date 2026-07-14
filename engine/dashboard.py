@@ -262,7 +262,7 @@ def _uplot_html(model: dict) -> str:
                 <b id="p-year-val">2060</b></label>
          <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
          <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
-                until <input type="number" id="p-contrib-until" value="2050" step="1" min="2027" max="2080"></label>
+                until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
          <label>then withdraw $/yr (today's $) <input type="number" id="p-withdraw" value="0" step="1000" min="0"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
        </div>
