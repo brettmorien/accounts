@@ -265,7 +265,6 @@ def _uplot_html(model: dict) -> str:
                 until <input type="number" id="p-contrib-until" value="2050" step="1" min="2027" max="2080"></label>
          <label>then withdraw %/yr <input type="number" id="p-withdraw" value="0" step="0.5" min="0" max="20"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
-         <label><input type="checkbox" id="p-real"> Show in today's dollars</label>
        </div>
        <div id="chart-proj"></div>
        <div class="muted" id="proj-summary" style="margin-top:8px"></div></div>
@@ -404,7 +403,6 @@ function buildProjection() {{
   const c = +gid('p-contrib').value || 0;
   const w = (+gid('p-withdraw').value || 0) / 100;   // yearly withdrawal after contributions stop
   const infl = (+gid('p-infl').value || 0) / 100;
-  const showReal = gid('p-real').checked;
   const years = endYear - thisYear;
   // Contributions stop after this many years, then the balance keeps compounding.
   const tStop = Math.max(0, Math.min(years, (+gid('p-contrib-until').value || endYear) - thisYear));
@@ -429,7 +427,6 @@ function buildProjection() {{
                   DATA.total.concat(futTs.map(()=>null)),
                   nom.concat(nominal),
                   rl.concat(real) ]);
-  uProj.setSeries(3, {{ show: showReal }});
 
   const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
   const endReal = real.length ? real[real.length - 1] : anchorVal;
@@ -450,7 +447,7 @@ function buildProjection() {{
   }}
   gid('proj-summary').textContent = summary;
 }}
-['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-real'].forEach(
+['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
 buildProjection();
 </script>
