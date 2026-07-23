@@ -265,6 +265,9 @@ def _uplot_html(model: dict) -> str:
                 until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
          <label>then withdraw $/yr (today's $) <input type="number" id="p-withdraw" value="0" step="1000" min="0"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
+         <label><input type="checkbox" id="p-ss" checked> Social Security (max)</label>
+         <label>current age <input type="number" id="p-age" value="45" step="1" min="18" max="90"></label>
+         <label>SS start age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70"></label>
        </div>
        <div id="chart-proj"></div>
        <div class="muted" id="proj-summary" style="margin-top:8px"></div></div>
@@ -406,6 +409,21 @@ const uProj = new uPlot({{
 }}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
 new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340 }})).observe(projEl);
 
+// Social Security claiming-age factor vs full retirement age (67): claiming early
+// reduces the benefit (5/9%/mo for the first 36 months, 5/12%/mo beyond); delaying
+// adds 2/3%/mo (8%/yr) up to age 70.
+function ssFactor(age) {{
+  const FRA = 67;
+  age = Math.max(62, Math.min(70, age));
+  const months = (age - FRA) * 12;
+  if (months < 0) {{
+    const early = -months;
+    const pct = Math.min(early, 36) * (5/9) + Math.max(0, early - 36) * (5/12);
+    return 1 - pct/100;
+  }}
+  return 1 + months * (2/3)/100;
+}}
+
 function buildProjection() {{
   const endYear = Math.max(thisYear + 1, Math.min(2080, +gid('p-year').value || (thisYear + 30)));
   gid('p-year-val').textContent = endYear;
@@ -416,6 +434,13 @@ function buildProjection() {{
   const years = endYear - thisYear;
   // Contributions stop after this many years, then the balance keeps compounding.
   const tStop = Math.max(0, Math.min(years, (+gid('p-contrib-until').value || endYear) - thisYear));
+  // Social Security (max earner): benefit from the SSA max-at-FRA, scaled by claiming age.
+  const FRA_MAX_ANNUAL = 48216;            // ~SSA max of $4,018/mo at FRA (2025), today's $
+  const ssOn = gid('p-ss').checked;
+  const curAge = +gid('p-age').value || 0;
+  const ssStartAge = +gid('p-ss-age').value || 65;
+  const ssAnnual = ssOn ? FRA_MAX_ANNUAL * ssFactor(ssStartAge) : 0;      // today's $
+  const ssStartYear = thisYear + Math.max(0, ssStartAge - curAge);
 
   const futTs = [], nominal = [], real = [];
   let bal = anchorVal, depletedYear = null;
@@ -424,8 +449,11 @@ function buildProjection() {{
     bal *= (1 + r);                          // one year of growth
     if (t <= tStop) {{
       bal += c;                              // accumulation: add contribution (end of year)
-    }} else if (W > 0) {{
-      bal -= W * Math.pow(1 + infl, t);      // drawdown: fixed today's-$ amount, inflated to year t
+    }} else {{
+      // Drawdown: spend W (today's $); Social Security covers part once it starts.
+      const ssReal = (ssOn && (curAge + t) >= ssStartAge) ? ssAnnual : 0;
+      const netReal = Math.max(0, W - ssReal);
+      bal -= netReal * Math.pow(1 + infl, t); // remaining need, inflated to year t
       if (bal <= 0) {{ bal = 0; if (depletedYear === null) depletedYear = thisYear + t; }}
     }}
     futTs.push(Math.floor(ms / 1000));
@@ -446,19 +474,22 @@ function buildProjection() {{
     'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
     + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
     + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
-    + (W ? ", then withdrawing " + usd(W) + "/yr (today's $)" : '')
+    + (W ? ", then spending " + usd(W) + "/yr (today's $)" : '')
+    + (ssAnnual > 0 ? ", Social Security " + usd(ssAnnual) + "/yr from age " + ssStartAge
+        + ' (' + ssStartYear + ')' : '')
     + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
   if (W > 0 && tStop < years) {{
-    // Fixed real withdrawal; its nominal amount grows with inflation each year.
+    // Fixed real spending; its nominal amount grows with inflation each year.
     const nomFirst = W * Math.pow(1 + infl, tStop + 1);   // first drawdown year (tStop+1)
     const nomLast  = W * Math.pow(1 + infl, years);       // end year
-    summary += ' Withdrawal ' + usd(W) + "/yr in today's $ = " + usd(nomFirst)
-      + ' in ' + (thisYear + tStop + 1) + ' → ' + usd(nomLast) + ' by ' + endYear + ' nominal.'
-      + (depletedYear ? ' ⚠ Runs out ~' + depletedYear + '.' : '');
+    summary += ' Spending ' + usd(W) + "/yr today's $ = " + usd(nomFirst)
+      + ' in ' + (thisYear + tStop + 1) + ' → ' + usd(nomLast) + ' by ' + endYear + ' nominal'
+      + (ssAnnual > 0 ? "; Social Security covers " + usd(ssAnnual) + "/yr (today's $) from " + ssStartYear : '')
+      + '.' + (depletedYear ? ' ⚠ Runs out ~' + depletedYear + '.' : '');
   }}
   gid('proj-summary').textContent = summary;
 }}
-['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl'].forEach(
+['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-ss','p-age','p-ss-age'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
 buildProjection();
 </script>
