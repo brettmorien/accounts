@@ -265,8 +265,9 @@ def _uplot_html(model: dict) -> str:
                 until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
          <label>then withdraw $/yr (today's $) <input type="number" id="p-withdraw" value="0" step="1000" min="0"></label>
          <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
-         <label><input type="checkbox" id="p-ss" checked> Social Security (max)</label>
-         <label>current age <input type="number" id="p-age" value="45" step="1" min="18" max="90"></label>
+         <label><input type="checkbox" id="p-ss" checked> Social Security (max), 2 people</label>
+         <label>age 1 <input type="number" id="p-age" value="45" step="1" min="18" max="90"></label>
+         <label>age 2 <input type="number" id="p-age2" value="39" step="1" min="18" max="90"></label>
          <label>SS start age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70"></label>
        </div>
        <div id="chart-proj"></div>
@@ -438,9 +439,11 @@ function buildProjection() {{
   const FRA_MAX_ANNUAL = 48216;            // ~SSA max of $4,018/mo at FRA (2025), today's $
   const ssOn = gid('p-ss').checked;
   const curAge = +gid('p-age').value || 0;
+  const curAge2 = +gid('p-age2').value || 0;
   const ssStartAge = +gid('p-ss-age').value || 65;
-  const ssAnnual = ssOn ? FRA_MAX_ANNUAL * ssFactor(ssStartAge) : 0;      // today's $
-  const ssStartYear = thisYear + Math.max(0, ssStartAge - curAge);
+  const ssAnnual = ssOn ? FRA_MAX_ANNUAL * ssFactor(ssStartAge) : 0;      // per person, today's $
+  const ssY1 = thisYear + Math.max(0, ssStartAge - curAge);   // when person 1 claims
+  const ssY2 = thisYear + Math.max(0, ssStartAge - curAge2);  // when person 2 claims
 
   const futTs = [], nominal = [], real = [];
   let bal = anchorVal, depletedYear = null;
@@ -450,8 +453,12 @@ function buildProjection() {{
     if (t <= tStop) {{
       bal += c;                              // accumulation: add contribution (end of year)
     }} else {{
-      // Drawdown: spend W (today's $); Social Security covers part once it starts.
-      const ssReal = (ssOn && (curAge + t) >= ssStartAge) ? ssAnnual : 0;
+      // Drawdown: spend W (today's $); each person's SS offsets it once they claim.
+      let ssReal = 0;
+      if (ssOn) {{
+        if (curAge + t >= ssStartAge) ssReal += ssAnnual;    // person 1 receiving
+        if (curAge2 + t >= ssStartAge) ssReal += ssAnnual;   // person 2 receiving
+      }}
       const netReal = Math.max(0, W - ssReal);
       bal -= netReal * Math.pow(1 + infl, t); // remaining need, inflated to year t
       if (bal <= 0) {{ bal = 0; if (depletedYear === null) depletedYear = thisYear + t; }}
@@ -475,8 +482,9 @@ function buildProjection() {{
     + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
     + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
     + (W ? ", then spending " + usd(W) + "/yr (today's $)" : '')
-    + (ssAnnual > 0 ? ", Social Security " + usd(ssAnnual) + "/yr from age " + ssStartAge
-        + ' (' + ssStartYear + ')' : '')
+    + (ssAnnual > 0 ? ", Social Security " + usd(ssAnnual) + "/yr each from age " + ssStartAge
+        + ' (' + Math.min(ssY1, ssY2) + ' & ' + Math.max(ssY1, ssY2) + ', '
+        + usd(2 * ssAnnual) + '/yr combined)' : '')
     + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
   if (W > 0 && tStop < years) {{
     // Fixed real spending; its nominal amount grows with inflation each year.
@@ -484,12 +492,13 @@ function buildProjection() {{
     const nomLast  = W * Math.pow(1 + infl, years);       // end year
     summary += ' Spending ' + usd(W) + "/yr today's $ = " + usd(nomFirst)
       + ' in ' + (thisYear + tStop + 1) + ' → ' + usd(nomLast) + ' by ' + endYear + ' nominal'
-      + (ssAnnual > 0 ? "; Social Security covers " + usd(ssAnnual) + "/yr (today's $) from " + ssStartYear : '')
+      + (ssAnnual > 0 ? "; Social Security adds " + usd(ssAnnual) + "/yr from " + Math.min(ssY1, ssY2)
+          + ", " + usd(2 * ssAnnual) + "/yr once both claim (" + Math.max(ssY1, ssY2) + ", today's $)" : '')
       + '.' + (depletedYear ? ' ⚠ Runs out ~' + depletedYear + '.' : '');
   }}
   gid('proj-summary').textContent = summary;
 }}
-['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-ss','p-age','p-ss-age'].forEach(
+['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-ss','p-age','p-age2','p-ss-age'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
 buildProjection();
 </script>
