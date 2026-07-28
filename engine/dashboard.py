@@ -229,11 +229,18 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
   .controls {{ display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
         margin: 6px 0 10px; font-size: 12px; }}
   .controls label {{ display: inline-flex; align-items: center; gap: 6px; }}
+  .controls .grp {{ display: inline-flex; align-items: center; gap: 18px; }}
   .controls input[type=number] {{ width: 76px; padding: 2px 4px; }}
+  #proj-summary .headline {{ font-size: 14px; color: #3f3f46; }}
+  #proj-summary .assume {{ font-size: 12px; color: #71717a; margin-top: 3px; }}
+  #proj-summary .warn {{ color: #dc2626; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
     th, td {{ border-color: #27272a; }} .muted {{ color: #a1a1aa; }}
+    #proj-summary .headline {{ color: #e4e4e7; }}
+    #proj-summary .assume {{ color: #a1a1aa; }}
+    #proj-summary .warn {{ color: #f87171; }}
   }}
   {head}
 </style></head>
@@ -258,20 +265,22 @@ def _uplot_html(model: dict) -> str:
        <div id="comp-legend" class="legend"></div></div>
   <div class="card"><div class="muted">Projection</div>
        <div class="controls">
-         <label>To year <input type="range" id="p-year" min="2027" max="2080" value="2060">
-                <b id="p-year-val">2060</b></label>
          <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
          <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
                 until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
-         <label>then withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20">
-                = <b id="p-withdraw-amt"></b>/yr (today's $)</label>
-         <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
+         <span class="grp">
+           <label>then withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20">
+                  = <b id="p-withdraw-amt"></b>/yr (today's $)</label>
+           <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
+         </span>
          <label>age 1 <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
          <label>age 2 <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
          <label>SS start age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70"></label>
        </div>
        <div id="chart-proj"></div>
-       <div class="muted" id="proj-summary" style="margin-top:8px"></div></div>
+       <div id="proj-summary" style="margin-top:8px">
+         <div class="headline" id="proj-headline"></div>
+         <div class="assume" id="proj-assume"></div></div></div>
   <div class="card"><div class="muted">Accounts</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
@@ -385,7 +394,7 @@ for (const r of DATA.table) {{
     + `<td class="${{cls}}">${{r.pct==null?'—':sign+r.pct+'%'}}</td></tr>`);
 }}
 
-// ---- Projection: extend the net-worth line to a chosen year, with an optional
+// ---- Projection: extend the net-worth line to END_YEAR, with an
 // inflation-adjusted ("today's dollars") overlay. All computed in the browser.
 const projEl = document.getElementById('chart-proj');
 const gid = id => document.getElementById(id);
@@ -393,8 +402,7 @@ const anchorTs = DATA.x[DATA.x.length - 1];   // latest history timestamp (sec)
 const anchorVal = DATA.grand_total;           // latest total net worth
 const anchorDate = new Date(anchorTs * 1000);
 const thisYear = anchorDate.getUTCFullYear();
-gid('p-year').min = thisYear + 1;
-if (+gid('p-year').value <= thisYear) gid('p-year').value = Math.min(2080, thisYear + 30);
+gid('p-contrib-until').min = thisYear + 1;
 
 const projSeries = [ {{}},
   {{ label: 'History', stroke: '#2563eb', width: 2, fill: 'rgba(37,99,235,0.10)', value: (u,v)=>usd(v) }},
@@ -409,6 +417,8 @@ const uProj = new uPlot({{
   legend: {{ live: true }}, series: projSeries,
 }}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
 new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340 }})).observe(projEl);
+
+const END_YEAR = 2080;   // projections always run to the same horizon
 
 // Social Security claiming-age factor vs full retirement age (67): claiming early
 // reduces the benefit (5/9%/mo for the first 36 months, 5/12%/mo beyond); delaying
@@ -426,8 +436,7 @@ function ssFactor(age) {{
 }}
 
 function buildProjection() {{
-  const endYear = Math.max(thisYear + 1, Math.min(2080, +gid('p-year').value || (thisYear + 30)));
-  gid('p-year-val').textContent = endYear;
+  const endYear = Math.max(thisYear + 1, END_YEAR);
   const r = (+gid('p-return').value || 0) / 100;
   const c = +gid('p-contrib').value || 0;
   const wPct = (+gid('p-withdraw').value || 0) / 100;  // % of the nest egg drawn per year
@@ -480,29 +489,29 @@ function buildProjection() {{
 
   const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
   const endReal = real.length ? real[real.length - 1] : anchorVal;
-  let summary =
-    'Projected ' + endYear + ': ' + usd(endNom) + ' nominal · ' + usd(endReal)
-    + " in today's dollars — assumes " + (r * 100).toFixed(1) + '%/yr return'
-    + (c ? ', ' + usd(c) + '/yr added until ' + (thisYear + tStop) : '')
-    + (W ? ', then withdrawing ' + (wPct * 100).toFixed(2) + '%/yr = ' + usd(W)
-        + "/yr (today's $)" : '')
-    + ", Social Security " + usd(ssAnnual) + "/yr each from age " + ssStartAge
-    + ' (' + Math.min(ssY1, ssY2) + ' & ' + Math.max(ssY1, ssY2) + ', '
-    + usd(2 * ssAnnual) + '/yr combined)'
-    + ', ' + (infl * 100).toFixed(1) + '%/yr inflation.';
-  if (W > 0 && tStop < years) {{
-    // Fixed real spending; its nominal amount grows with inflation each year.
-    const nomFirst = W * Math.pow(1 + infl, tStop + 1);   // first drawdown year (tStop+1)
-    const nomLast  = W * Math.pow(1 + infl, years);       // end year
-    summary += ' Spending ' + usd(W) + "/yr today's $ = " + usd(nomFirst)
-      + ' in ' + (thisYear + tStop + 1) + ' → ' + usd(nomLast) + ' by ' + endYear + ' nominal'
-      + "; Social Security adds " + usd(ssAnnual) + "/yr from " + Math.min(ssY1, ssY2)
-      + ", " + usd(2 * ssAnnual) + "/yr once both claim (" + Math.max(ssY1, ssY2) + ", today's $)"
-      + '.' + (depletedYear ? ' ⚠ Runs out ~' + depletedYear + '.' : '');
+  const headline = gid('proj-headline');
+  headline.textContent = depletedYear
+    ? '⚠ Runs out in ' + depletedYear
+    : endYear + ': ' + usd(endReal) + " in today's dollars (" + usd(endNom) + ' nominal)';
+  headline.className = 'headline' + (depletedYear ? ' warn' : '');
+
+  // One bullet per assumption, so the line stays scannable as inputs change.
+  const drawYear = thisYear + tStop + 1;              // first year of drawdown
+  const bits = [(r * 100).toFixed(1) + '%/yr return',
+                (infl * 100).toFixed(1) + '%/yr inflation'];
+  if (c) bits.push(usd(c) + '/yr added through ' + (thisYear + tStop));
+  if (W && tStop < years) {{
+    // Spending is fixed in real terms, so its nominal amount grows with inflation.
+    const nomLast = W * Math.pow(1 + infl, years);
+    bits.push((wPct * 100).toFixed(2) + '% withdrawal = ' + usd(W) + "/yr today's $ from "
+      + drawYear + ' (' + usd(nomLast) + '/yr nominal by ' + endYear + ')');
   }}
-  gid('proj-summary').textContent = summary;
+  bits.push('Social Security ' + usd(ssAnnual) + '/yr each at ' + ssStartAge + ' ('
+    + Math.min(ssY1, ssY2) + ' & ' + Math.max(ssY1, ssY2) + '), '
+    + usd(2 * ssAnnual) + "/yr combined in today's $");
+  gid('proj-assume').textContent = bits.join(' · ');
 }}
-['p-year','p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-age','p-age2','p-ss-age'].forEach(
+['p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-age','p-age2','p-ss-age'].forEach(
   id => gid(id).addEventListener('input', buildProjection));
 buildProjection();
 </script>
