@@ -293,6 +293,11 @@ def _uplot_html(model: dict) -> str:
        <div class="hint">Projects your net worth forward from today's balance. Not financial
        advice &mdash; inputs are saved in this browser and restored next time.</div>
 
+       <div id="chart-proj"></div>
+       <div id="proj-summary" style="margin-top:8px">
+         <div class="headline" id="proj-headline"></div>
+         <div class="assume" id="proj-assume"></div></div>
+
        <div class="plan-section"><div class="plan-label">Participants</div>
          <div class="controls">
            <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
@@ -304,23 +309,28 @@ def _uplot_html(model: dict) -> str:
          <div class="controls">
            <label>Return while saving %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
            <label>Return in retirement %/yr <input type="number" id="p-return-retired" value="5" step="0.5" min="0" max="25"></label>
+           <label>Bucket return %/yr <input type="number" id="p-bucket-return" value="3" step="0.25" min="0" max="20"></label>
            <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
            <label>Your $/yr added <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
            <label class="p2-field">Partner's $/yr added <input type="number" id="p-contrib2" value="0" step="1000" min="0"></label>
          </div>
          <div class="hint p2-field">Each person's contribution stops at their own retirement
-         age below &mdash; the other keeps saving through any gap between the two.</div></div>
+         age below &mdash; the other keeps saving through any gap between the two. The bucket
+         return is the safer, lower rate for the bridge bucket below.</div></div>
 
        <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
            <label>Your retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
            <label class="p2-field">Partner's retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
+           <label class="p2-field">Your income $/yr while working <input type="number" id="p-income" value="0" step="1000" min="0"></label>
+           <label class="p2-field">Partner's income $/yr while working <input type="number" id="p-income2" value="0" step="1000" min="0"></label>
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
            <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
          </div>
-         <div class="hint">Set either field &mdash; the other updates to match, pinned to
-         whichever you edited last. A cash bucket to bridge the gap before Social Security
-         starts is sized automatically at retirement (see below).</div></div>
+         <div class="hint">Set withdraw %/yr or $/yr &mdash; the other updates to match, pinned
+         to whichever you edited last. As soon as either of you retires, a bucket (invested at
+         the safer bucket return above) is set aside to cover spending until Social Security
+         starts, net of any income the still-working partner earns in the meantime.</div></div>
 
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
@@ -331,11 +341,7 @@ def _uplot_html(model: dict) -> str:
          </div>
          <div class="hint">Assumes the 2025 maximum ($4,018/mo) at full retirement age, which
          depends on birth year (65&ndash;67).</div></div>
-
-       <div id="chart-proj"></div>
-       <div id="proj-summary" style="margin-top:8px">
-         <div class="headline" id="proj-headline"></div>
-         <div class="assume" id="proj-assume"></div></div></div>
+  </div>
   </div>
 """
     head = f"<style>{uplot_css}</style>"
@@ -515,9 +521,9 @@ function ssFactor(age, fra) {{
 
 // ---- Persist planning inputs across page refreshes (localStorage; this is a
 // local file opened offline, so nothing leaves the browser).
-const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-contrib', 'p-contrib2',
+const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-bucket-return', 'p-contrib', 'p-contrib2',
   'p-withdraw', 'p-withdraw-amt', 'p-infl', 'p-age', 'p-age2',
-  'p-retire-age', 'p-retire-age2', 'p-ss-age', 'p-ss-age2'];
+  'p-retire-age', 'p-retire-age2', 'p-income', 'p-income2', 'p-ss-age', 'p-ss-age2'];
 const PLAN_STORAGE_KEY = 'financialPlanningInputs.v1';
 let withdrawMode = 'pct';   // 'pct' or 'amount' -- whichever field the user edited last
 
@@ -553,8 +559,11 @@ function buildProjection() {{
   const twoPerson = gid('p-two-person').checked;
   const r = (+gid('p-return').value || 0) / 100;                  // return while still saving
   const rRetired = (+gid('p-return-retired').value || 0) / 100;   // more conservative post-retirement
+  const bucketReturn = (+gid('p-bucket-return').value || 0) / 100; // safer rate for the bridge bucket
   const c1 = +gid('p-contrib').value || 0;
   const c2 = twoPerson ? (+gid('p-contrib2').value || 0) : 0;
+  const income1 = +gid('p-income').value || 0;                    // your earnings while still working
+  const income2 = twoPerson ? (+gid('p-income2').value || 0) : 0; // partner's earnings while still working
   const wPct = (+gid('p-withdraw').value || 0) / 100;  // % of the nest egg drawn per year
   const infl = (+gid('p-infl').value || 0) / 100;
   const years = endYear - thisYear;
@@ -562,15 +571,16 @@ function buildProjection() {{
   const curAge2 = +gid('p-age2').value || 0;
   // Each person keeps contributing until THEIR OWN retirement age, so the still-working
   // partner's saving continues through any gap between the two retirement dates. The
-  // household as a whole stops accumulating (and can start drawing down) only once
-  // BOTH have retired -- the LATER of the two dates.
+  // household starts drawing down as soon as the FIRST person retires (tFirst) -- the
+  // still-working partner's income (not their savings) offsets that draw until they too
+  // retire, at which point their own contribution likewise stops.
   const retireAge = +gid('p-retire-age').value || 65;
   const retireAge2 = +gid('p-retire-age2').value || 65;
   const retireYear1 = thisYear + Math.max(0, retireAge - curAge);
   const retireYear2 = thisYear + Math.max(0, retireAge2 - curAge2);
   const tStop1 = Math.max(0, Math.min(years, retireYear1 - thisYear));
   const tStop2 = Math.max(0, Math.min(years, retireYear2 - thisYear));
-  const tStop = twoPerson ? Math.max(tStop1, tStop2) : tStop1;
+  const tFirst = twoPerson ? Math.min(tStop1, tStop2) : tStop1;
   // Social Security: assumes each person is a max earner (the 2025 max benefit
   // at full retirement age), scaled by their own claiming age. FRA isn't a flat
   // 67 -- it depends on birth year (derived from current age) -- and spouses
@@ -590,15 +600,25 @@ function buildProjection() {{
   gid('p-ss-mo').textContent = usd(ssAnnual / 12);
   gid('p-ss-mo2').textContent = usd(ssAnnual2 / 12);
 
-  // Bucket method for the Social-Security bridge: at retirement, a slice of the
-  // portfolio (in today's $) is set aside to fully cover spending until the first
-  // check arrives, growing only with inflation (a safe/cash bucket) instead of
-  // being invested for growth. The rest stays fully invested and untouched --
-  // insulated from having to sell during the bridge -- until the bridge ends,
-  // when it takes over funding the (SS-reduced) ongoing need.
-  const drawYear = thisYear + tStop + 1;                          // first year of household drawdown
+  // Bucket method for the Social-Security bridge: as soon as the first person
+  // retires, a slice of the portfolio (in today's $) is set aside to cover spending
+  // until the first check arrives -- net of any income the still-working partner
+  // earns in the meantime -- invested at the safer bucket return instead of being
+  // fully exposed to growth-asset risk. The rest stays fully invested and untouched
+  // until the bridge ends, when it takes over funding the (SS-reduced) ongoing need.
+  const drawYear = thisYear + tFirst + 1;                         // first year of household drawdown
   const firstSSYear = twoPerson ? Math.min(ssY1, ssY2) : ssY1;     // first check, either person
   const bridgeYears = Math.max(0, Math.min(firstSSYear, endYear) - drawYear);
+  function bridgeCost(spend) {{   // today's-$ sum of net (income-offset) need over the bridge
+    let sum = 0;
+    for (let i = tFirst + 1; i <= tFirst + bridgeYears; i++) {{
+      let offset = 0;
+      if (i <= tStop1) offset += income1;
+      if (twoPerson && i <= tStop2) offset += income2;
+      sum += Math.max(0, spend - offset);
+    }}
+    return sum;
+  }}
 
   // The withdrawal rate/amount is fixed once, to the balance the year drawdown starts
   // (in today's $); that fixes spending for the rest of the projection. Percent and
@@ -606,45 +626,50 @@ function buildProjection() {{
   // (withdrawMode) drives it, and the other field is recomputed to match below.
   let balAtRetireReal = anchorVal;   // today's-$ balance when drawdown starts
   let W = (withdrawMode === 'amount') ? (+gid('p-withdraw-amt').value || 0) : wPct * balAtRetireReal;
-  let bridgeReal = W * bridgeYears;                 // today's-$ size of the bridge bucket
+  let bridgeReal = bridgeCost(W);                   // today's-$ size of the bridge bucket
   const futTs = [], nominal = [], real = [];
   let bal = anchorVal, bucketNom = 0, remNom = 0, depletedYear = null;
-  if (tStop === 0) {{   // already past both retirement dates today: size the bucket now
+  if (tFirst === 0) {{   // someone has already retired today: size the bucket now
     bucketNom = Math.min(bridgeReal, balAtRetireReal);
     remNom = bal - bucketNom;
   }}
   for (let t = 1; t <= years; t++) {{
     const ms = Date.UTC(thisYear + t, anchorDate.getUTCMonth(), anchorDate.getUTCDate());
-    if (t <= tStop) {{
-      // Accumulation: each person's own contribution stops at their own retirement.
-      bal *= (1 + r);
-      bal += (t <= tStop1 ? c1 : 0) + (t <= tStop2 ? c2 : 0);
-      if (t === tStop) {{
+    const contribAmt = (t <= tStop1 ? c1 : 0) + (twoPerson && t <= tStop2 ? c2 : 0);
+    if (t <= tFirst) {{
+      // Accumulation: both still working.
+      bal = bal * (1 + r) + contribAmt;
+      if (t === tFirst) {{
         balAtRetireReal = bal / Math.pow(1 + infl, t);
         W = (withdrawMode === 'amount') ? (+gid('p-withdraw-amt').value || 0) : wPct * balAtRetireReal;
-        bridgeReal = W * bridgeYears;
+        bridgeReal = bridgeCost(W);
         bucketNom = Math.min(bridgeReal, balAtRetireReal) * Math.pow(1 + infl, t);
         remNom = bal - bucketNom;
       }}
-    }} else if (t - tStop <= bridgeYears) {{
-      // Bridge: no Social Security yet for anyone. The bucket alone funds the full
-      // spend, growing only with inflation; the untouched remainder keeps compounding
-      // at the pre-retirement rate since nothing is being sold out of it.
-      bucketNom *= (1 + infl);
-      bucketNom -= W * Math.pow(1 + infl, t);
-      if (bucketNom < 0) bucketNom = 0;
-      remNom *= (1 + r);
-      bal = bucketNom + remNom;
     }} else {{
-      // Past the bridge: at least one Social Security check has started. Draw the
-      // remaining (SS-offset) need from the remainder, now shifted to the more
-      // conservative in-retirement return since it's the one actively being spent.
-      remNom *= (1 + rRetired);
-      let ssReal = 0;
-      if (curAge + t >= ssStartAge) ssReal += ssAnnual;                   // person 1 receiving
-      if (twoPerson && curAge2 + t >= ssStartAge2) ssReal += ssAnnual2;   // person 2 receiving
-      const netReal = Math.max(0, W - ssReal);
-      remNom -= netReal * Math.pow(1 + infl, t); // remaining need, inflated to year t
+      const ss1now = curAge + t >= ssStartAge;
+      const ss2now = twoPerson && curAge2 + t >= ssStartAge2;
+      const inBridge = !ss1now && !ss2now;
+      if (!inBridge && bucketNom > 0) {{ remNom += bucketNom; bucketNom = 0; }}  // bridge just ended
+      let offset = 0;
+      if (t <= tStop1) offset += income1;                    // you're still working
+      if (twoPerson && t <= tStop2) offset += income2;        // partner's still working
+      if (ss1now) offset += ssAnnual;
+      if (ss2now) offset += ssAnnual2;
+      const netReal = Math.max(0, W - offset);
+      if (inBridge) {{
+        // Bucket funds the net (income-offset) need at the safer bucket return; a
+        // shortfall spills over to the remainder rather than vanishing. The
+        // remainder itself stays untouched and fully invested until the bridge ends.
+        bucketNom = bucketNom * (1 + bucketReturn) - netReal * Math.pow(1 + infl, t);
+        if (bucketNom < 0) {{ remNom += bucketNom; bucketNom = 0; }}
+        remNom = remNom * (1 + r) + contribAmt;
+      }} else {{
+        // Past the bridge: draw the remaining (SS-offset) need from the remainder,
+        // now shifted to the more conservative in-retirement return since it's the
+        // pool actively being spent.
+        remNom = remNom * (1 + rRetired) + contribAmt - netReal * Math.pow(1 + infl, t);
+      }}
       bal = bucketNom + remNom;
     }}
     if (bal <= 0) {{ bal = 0; bucketNom = 0; remNom = 0; if (depletedYear === null) depletedYear = thisYear + t; }}
@@ -679,10 +704,12 @@ function buildProjection() {{
 
   // One bullet per assumption, so the line stays scannable as inputs change.
   const bits = [(r * 100).toFixed(1) + '%/yr while saving', (rRetired * 100).toFixed(1) + '%/yr in retirement',
-                (infl * 100).toFixed(1) + '%/yr inflation'];
+                (bucketReturn * 100).toFixed(1) + '%/yr bucket', (infl * 100).toFixed(1) + '%/yr inflation'];
   if (c1) bits.push('your ' + usd(c1) + '/yr added until ' + retireYear1);
   if (twoPerson && c2) bits.push("partner's " + usd(c2) + '/yr added until ' + retireYear2);
-  if (W && tStop < years) {{
+  if (income1) bits.push('your ' + usd(income1) + '/yr income until ' + retireYear1);
+  if (twoPerson && income2) bits.push("partner's " + usd(income2) + '/yr income until ' + retireYear2);
+  if (W && tFirst < years) {{
     // Spending is fixed in real terms, so its nominal amount grows with inflation.
     const nomLast = W * Math.pow(1 + infl, years);
     bits.push(effPct.toFixed(2) + '% withdrawal = ' + usd(W) + "/yr today's $ from "
@@ -692,10 +719,10 @@ function buildProjection() {{
     + (twoPerson ? ' + ' + usd(ssAnnual2) + '/yr at ' + ssStartAge2 + ' (partner, from ' + ssY2 + ')' : '')
     + ' = ' + usd(ssAnnual + ssAnnual2) + "/yr combined in today's $");
   // Bucket method: this is the actionable number for the bridge -- set this much
-  // aside (today's $, safe/cash) at retirement and the rest can stay fully invested.
-  if (W && tStop < years && bridgeYears > 0) {{
-    bits.push('Bridge bucket: ' + usd(bridgeReal) + ' set aside at retirement covers '
-      + bridgeYears + ' yr of spending until Social Security starts in ' + firstSSYear);
+  // aside (today's $, at the bucket return above) and the rest can stay fully invested.
+  if (W && tFirst < years && bridgeYears > 0) {{
+    bits.push('Bridge bucket: ' + usd(bridgeReal) + ' set aside in ' + (thisYear + tFirst)
+      + ' covers net spending until Social Security starts in ' + firstSSYear);
   }}
   gid('proj-assume').textContent = bits.join(' · ');
 }}
