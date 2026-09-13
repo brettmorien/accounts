@@ -696,13 +696,20 @@ function buildProjection() {{
   const bridgeYears = Math.max(0, Math.min(firstSSYear, endYear) - drawYear);
   // Thin vertical lines on the chart bracketing the bridge span.
   bridgeMarkers = (bridgeYears > 0 && tFirst < years) ? [yearTs(drawYear), yearTs(firstSSYear)] : [];
-  function bridgeCost(spend) {{   // today's-$ sum of net (income-offset) need over the bridge
+  // Present value (today's $) of the bridge's net need, discounted at the bucket's
+  // OWN return relative to inflation -- not just summed flat. A bucket earning more
+  // than inflation grows in real terms while it sits there, so less needs to be set
+  // aside up front; one earning less needs a bigger cushion. At bucketReturn == infl
+  // (real return 0%) this reduces to a flat sum of each year's real need.
+  const bridgeDiscount = (1 + infl) / (1 + bucketReturn);
+  function bridgeCost(spend) {{   // today's-$ size of the bucket needed over the bridge
     let sum = 0;
-    for (let i = tFirst + 1; i <= tFirst + bridgeYears; i++) {{
+    for (let k = 1; k <= bridgeYears; k++) {{
+      const i = tFirst + k;
       let offset = 0;
       if (i <= tStop1) offset += income1;
       if (twoPerson && i <= tStop2) offset += income2;
-      sum += Math.max(0, spend - offset);
+      sum += Math.max(0, spend - offset) * Math.pow(bridgeDiscount, k);
     }}
     return sum;
   }}
