@@ -299,10 +299,12 @@ def _uplot_html(model: dict) -> str:
          <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
        </div>
 
-       <div class="plan-section"><div class="plan-label">Ages</div>
+       <div class="plan-section"><div class="plan-label">Ages &amp; retirement</div>
          <div class="controls">
            <label>Your age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
+           <label>Your retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
            <label class="p2-field">Partner's age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
+           <label class="p2-field">Partner's retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
          </div></div>
 
        <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
@@ -310,8 +312,7 @@ def _uplot_html(model: dict) -> str:
            <label>Return while saving %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
            <label>Return in retirement %/yr <input type="number" id="p-return-retired" value="5" step="0.5" min="0" max="25"></label>
            <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
-           <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
-                  until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
+           <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
          </div></div>
 
        <div class="plan-section"><div class="plan-label">Retirement withdrawals</div>
@@ -470,7 +471,6 @@ const anchorTs = DATA.x[DATA.x.length - 1];   // latest history timestamp (sec)
 const anchorVal = DATA.grand_total;           // latest total net worth
 const anchorDate = new Date(anchorTs * 1000);
 const thisYear = anchorDate.getUTCFullYear();
-gid('p-contrib-until').min = thisYear + 1;
 
 const projSeries = [ {{}},
   {{ label: 'History', stroke: '#2563eb', width: 2, fill: 'rgba(37,99,235,0.10)', value: (u,v)=>usd(v) }},
@@ -505,9 +505,9 @@ function ssFactor(age) {{
 
 // ---- Persist planning inputs across page refreshes (localStorage; this is a
 // local file opened offline, so nothing leaves the browser).
-const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-contrib', 'p-contrib-until',
-  'p-withdraw', 'p-infl', 'p-age', 'p-age2', 'p-ss-age', 'p-ss-age2',
-  'p-ss-benefit', 'p-ss-benefit2'];
+const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-contrib',
+  'p-withdraw', 'p-infl', 'p-age', 'p-age2', 'p-retire-age', 'p-retire-age2',
+  'p-ss-age', 'p-ss-age2', 'p-ss-benefit', 'p-ss-benefit2'];
 const PLAN_STORAGE_KEY = 'financialPlanningInputs.v1';
 
 function loadPlanInputs() {{
@@ -544,14 +544,21 @@ function buildProjection() {{
   const wPct = (+gid('p-withdraw').value || 0) / 100;  // % of the nest egg drawn per year
   const infl = (+gid('p-infl').value || 0) / 100;
   const years = endYear - thisYear;
-  // Contributions stop after this many years, then the balance keeps compounding.
-  const tStop = Math.max(0, Math.min(years, (+gid('p-contrib-until').value || endYear) - thisYear));
+  const curAge = +gid('p-age').value || 0;
+  const curAge2 = +gid('p-age2').value || 0;
+  // Contributions run until the household stops working -- the LATER of the two
+  // retirement ages, since one person may keep earning (and saving) after the
+  // other retires. Withdrawals begin the year after.
+  const retireAge = +gid('p-retire-age').value || 65;
+  const retireAge2 = +gid('p-retire-age2').value || 65;
+  const retireYear1 = thisYear + Math.max(0, retireAge - curAge);
+  const retireYear2 = thisYear + Math.max(0, retireAge2 - curAge2);
+  const retireYear = twoPerson ? Math.max(retireYear1, retireYear2) : retireYear1;
+  const tStop = Math.max(0, Math.min(years, retireYear - thisYear));
   // Social Security: each person's own estimated benefit at full retirement age (67),
   // scaled by their own claiming age. Spouses often claim at different ages (e.g. the
   // lower earner claims early while the higher earner delays to 70), so both the age
   // and the benefit estimate are tracked per person rather than assumed shared/maxed.
-  const curAge = +gid('p-age').value || 0;
-  const curAge2 = +gid('p-age2').value || 0;
   const ssStartAge = +gid('p-ss-age').value || 65;
   const ssStartAge2 = +gid('p-ss-age2').value || 65;
   const ssAnnual = (+gid('p-ss-benefit').value || 0) * 12 * ssFactor(ssStartAge);
@@ -605,7 +612,7 @@ function buildProjection() {{
   const drawYear = thisYear + tStop + 1;              // first year of drawdown
   const bits = [(r * 100).toFixed(1) + '%/yr while saving', (rRetired * 100).toFixed(1) + '%/yr in retirement',
                 (infl * 100).toFixed(1) + '%/yr inflation'];
-  if (c) bits.push(usd(c) + '/yr added through ' + (thisYear + tStop));
+  if (c) bits.push(usd(c) + '/yr added until retirement in ' + retireYear);
   if (W && tStop < years) {{
     // Spending is fixed in real terms, so its nominal amount grows with inflation.
     const nomLast = W * Math.pow(1 + infl, years);
@@ -615,6 +622,14 @@ function buildProjection() {{
   bits.push('Social Security: ' + usd(ssAnnual) + '/yr at ' + ssStartAge + ' (you, from ' + ssY1 + ')'
     + (twoPerson ? ' + ' + usd(ssAnnual2) + '/yr at ' + ssStartAge2 + ' (partner, from ' + ssY2 + ')' : '')
     + ' = ' + usd(ssAnnual + ssAnnual2) + "/yr combined in today's $");
+  // Bridge: the gap between retiring and the first Social Security check, funded
+  // entirely from savings (no SS offset yet) -- easy to under-budget for.
+  const firstSSYear = twoPerson ? Math.min(ssY1, ssY2) : ssY1;
+  const bridgeYears = Math.max(0, Math.min(firstSSYear, endYear) - drawYear);
+  if (W && tStop < years && bridgeYears > 0) {{
+    bits.push('⚠ ' + bridgeYears + '-yr bridge before Social Security: ' + usd(W)
+      + "/yr fully from savings (" + drawYear + '–' + (drawYear + bridgeYears - 1) + ')');
+  }}
   gid('proj-assume').textContent = bits.join(' · ');
 }}
 PLAN_FIELDS.forEach(id => gid(id).addEventListener('input', () => {{ savePlanInputs(); buildProjection(); }}));
