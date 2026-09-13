@@ -687,17 +687,17 @@ function buildProjection() {{
 
   // Bucket method for the Social-Security bridge: as soon as the first person
   // retires, a slice of the portfolio (in today's $) is set aside to cover spending
-  // until the first check arrives -- net of any income the still-working partner
-  // earns in the meantime -- invested at the safer bucket return instead of being
-  // fully exposed to growth-asset risk. The rest stays fully invested and untouched
-  // until the bridge ends, when it takes over funding the (SS-reduced) ongoing need.
-  const drawYear = thisYear + tFirst + 1;                         // first year of household drawdown
-  const firstSSYear = twoPerson ? Math.min(ssY1, ssY2) : ssY1;     // first check, either person
-  const bridgeYears = Math.max(0, Math.min(firstSSYear, endYear) - drawYear);
+  // until BOTH are drawing Social Security -- net of any income the still-working
+  // partner earns in the meantime -- invested at the safer bucket return instead of
+  // being fully exposed to growth-asset risk. The rest stays fully invested and
+  // untouched until the bridge ends, when it takes over funding the ongoing need.
+  const drawYear = thisYear + tFirst + 1;                          // first year of household drawdown
+  const bridgeEndYear = twoPerson ? Math.max(ssY1, ssY2) : ssY1;    // both checks flowing
+  const bridgeYears = Math.max(0, Math.min(bridgeEndYear, endYear) - drawYear);
   // Thin vertical lines on the chart bracketing the bridge span -- from the year
   // the bucket is set aside (thisYear+tFirst) to the year it's drawn down to zero
-  // (firstSSYear), matching where the bridge bucket series itself is non-null.
-  bridgeMarkers = (bridgeYears > 0 && tFirst < years) ? [yearTs(thisYear + tFirst), yearTs(firstSSYear)] : [];
+  // (bridgeEndYear), matching where the bridge bucket series itself is non-null.
+  bridgeMarkers = (bridgeYears > 0 && tFirst < years) ? [yearTs(thisYear + tFirst), yearTs(bridgeEndYear)] : [];
   // Present value (today's $) of the bridge's net need, discounted at the bucket's
   // OWN return relative to inflation -- not just summed flat. A bucket earning more
   // than inflation grows in real terms while it sits there, so less needs to be set
@@ -746,7 +746,9 @@ function buildProjection() {{
     }} else {{
       const ss1now = curAge + t >= ssStartAge;
       const ss2now = twoPerson && curAge2 + t >= ssStartAge2;
-      const inBridge = !ss1now && !ss2now;
+      // Bridge lasts until BOTH are drawing Social Security, not just the first
+      // check -- a partial check still gets applied as an offset below either way.
+      const inBridge = twoPerson ? !(ss1now && ss2now) : !ss1now;
       if (!inBridge && bucketNom > 0) {{ remNom += bucketNom; bucketNom = 0; }}  // bridge just ended
       let offset = 0;
       if (t <= tStop1) offset += income1;                    // you're still working
@@ -823,7 +825,8 @@ function buildProjection() {{
   // aside (today's $, at the bucket return above) and the rest can stay fully invested.
   if (W && tFirst < years && bridgeYears > 0) {{
     bits.push('Bridge bucket: ' + usd(bridgeReal) + ' set aside in ' + (thisYear + tFirst)
-      + ' covers net spending until Social Security starts in ' + firstSSYear);
+      + ' covers net spending until ' + (twoPerson ? 'both are on Social Security in ' : 'Social Security starts in ')
+      + bridgeEndYear);
   }}
   gid('proj-assume').textContent = bits.join(' · ');
 }}
