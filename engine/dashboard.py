@@ -322,17 +322,14 @@ def _uplot_html(model: dict) -> str:
 
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
-           <label>Your benefit $/mo at FRA <input type="number" id="p-ss-benefit" value="4018" step="50" min="0"></label>
            <label>Your claiming age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70">
                   = <b id="p-ss-mo"></b>/mo</label>
-           <label class="p2-field">Partner's benefit $/mo at FRA <input type="number" id="p-ss-benefit2" value="4018" step="50" min="0"></label>
            <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70">
                   = <b id="p-ss-mo2"></b>/mo</label>
          </div>
-         <div class="hint">Defaults to the 2025 maximum ($4,018/mo at full retirement age);
-         use the estimate on your ssa.gov statement for an accurate projection. Full retirement
-         age depends on birth year (65&ndash;67); early claiming (as young as 62) reduces the
-         benefit, delaying (to 70) increases it.</div></div>
+         <div class="hint">Assumes the 2025 maximum benefit ($4,018/mo at full retirement age)
+         for each person. Full retirement age depends on birth year (65&ndash;67); early claiming
+         (as young as 62) reduces the benefit, delaying (to 70) increases it.</div></div>
 
        <div id="chart-proj"></div>
        <div id="proj-summary" style="margin-top:8px">
@@ -519,8 +516,7 @@ function ssFactor(age, fra) {{
 // local file opened offline, so nothing leaves the browser).
 const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-contrib',
   'p-withdraw', 'p-withdraw-amt', 'p-infl', 'p-age', 'p-age2',
-  'p-retire-age', 'p-retire-age2', 'p-ss-age', 'p-ss-age2',
-  'p-ss-benefit', 'p-ss-benefit2'];
+  'p-retire-age', 'p-retire-age2', 'p-ss-age', 'p-ss-age2'];
 const PLAN_STORAGE_KEY = 'financialPlanningInputs.v1';
 let withdrawMode = 'pct';   // 'pct' or 'amount' -- whichever field the user edited last
 
@@ -571,17 +567,18 @@ function buildProjection() {{
   const retireYear2 = thisYear + Math.max(0, retireAge2 - curAge2);
   const retireYear = twoPerson ? Math.max(retireYear1, retireYear2) : retireYear1;
   const tStop = Math.max(0, Math.min(years, retireYear - thisYear));
-  // Social Security: each person's own estimated benefit at THEIR OWN full retirement
-  // age -- FRA isn't a flat 67, it depends on birth year (derived from current age),
-  // scaled further by their own claiming age. Spouses often claim at different ages
-  // (e.g. the lower earner claims early while the higher earner delays to 70), so age,
-  // FRA, and benefit estimate are all tracked per person rather than assumed shared/maxed.
+  // Social Security: assumes each person is a max earner (the 2025 max benefit
+  // at full retirement age), scaled by their own claiming age. FRA isn't a flat
+  // 67 -- it depends on birth year (derived from current age) -- and spouses
+  // often claim at different ages (e.g. the lower earner claims early while the
+  // higher earner delays to 70), so both are tracked per person.
+  const FRA_MAX_MONTHLY = 4018;   // SSA max benefit at FRA (2025), today's $
   const ssStartAge = +gid('p-ss-age').value || 65;
   const ssStartAge2 = +gid('p-ss-age2').value || 65;
   const fra1 = fullRetirementAge(thisYear - curAge);
   const fra2 = fullRetirementAge(thisYear - curAge2);
-  const ssAnnual = (+gid('p-ss-benefit').value || 0) * 12 * ssFactor(ssStartAge, fra1);
-  const ssAnnual2 = twoPerson ? (+gid('p-ss-benefit2').value || 0) * 12 * ssFactor(ssStartAge2, fra2) : 0;
+  const ssAnnual = FRA_MAX_MONTHLY * 12 * ssFactor(ssStartAge, fra1);
+  const ssAnnual2 = twoPerson ? FRA_MAX_MONTHLY * 12 * ssFactor(ssStartAge2, fra2) : 0;
   const ssY1 = thisYear + Math.max(0, ssStartAge - curAge);    // when person 1 claims
   const ssY2 = thisYear + Math.max(0, ssStartAge2 - curAge2);  // when person 2 claims
   // Live readout right next to the claiming-age input, so the early/delayed
