@@ -310,11 +310,13 @@ def _uplot_html(model: dict) -> str:
          <div class="person-row">
            <span class="person-tag">You</span>
            <label>Age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
+           <label>Retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
            <label>Income $/yr while working <input type="number" id="p-income" value="0" step="1000" min="0"></label>
          </div>
          <div class="person-row p2-field">
            <span class="person-tag">Partner</span>
            <label>Age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
+           <label>Retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
            <label>Income $/yr while working <input type="number" id="p-income2" value="0" step="1000" min="0"></label>
          </div></div>
 
@@ -328,13 +330,11 @@ def _uplot_html(model: dict) -> str:
            <label class="p2-field">Partner's $/yr added <input type="number" id="p-contrib2" value="0" step="1000" min="0"></label>
          </div>
          <div class="hint p2-field">Each person's contribution stops at their own retirement
-         age below &mdash; the other keeps saving through any gap between the two. The bucket
+         age above &mdash; the other keeps saving through any gap between the two. The bucket
          return is the safer, lower rate for the bridge bucket below.</div></div>
 
        <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
-           <label>Your retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
-           <label class="p2-field">Partner's retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
            <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
          </div>
