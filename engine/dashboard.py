@@ -372,7 +372,8 @@ def _uplot_html(model: dict) -> str:
        <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
-           <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
+           <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0">
+                  = <b id="p-withdraw-mo"></b>/mo</label>
          </div>
          <div class="hint">Set either field &mdash; the other updates to match, pinned to
          whichever you edited last. A bridge bucket (return rate below) funds spending from
@@ -784,6 +785,7 @@ function buildProjection() {{
   }} else {{
     gid('p-withdraw-amt').value = Math.round(W);
   }}
+  gid('p-withdraw-mo').textContent = usd(W / 12);
 
   const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
   const endReal = real.length ? real[real.length - 1] : anchorVal;
