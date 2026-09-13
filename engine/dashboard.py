@@ -178,6 +178,7 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
         table.append({
             "label": _group_label(members),
             "as_of": dates[last_i],
+            "prev_as_of": dates[prev_i] if prev_i is not None else None,
             "balance": round(latest, 2),
             "delta": round(delta, 2) if delta is not None else None,
             "pct": round(pct, 2) if pct is not None else None,
@@ -322,6 +323,9 @@ def _uplot_html(model: dict) -> str:
        <div id="chart-comp"></div>
        <div id="comp-legend" class="legend"></div></div>
   <div class="card"><div class="muted">Accounts</div>
+       <div class="hint">Change is versus each row's own previous recorded balance, not a
+       fixed period &mdash; typically about a week, longer if a connection hasn't synced
+       recently. Hover a Change cell for the exact dates compared.</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
   </div>
@@ -508,11 +512,12 @@ const tb = document.querySelector('#tbl tbody');
 for (const r of DATA.table) {{
   const cls = r.delta==null ? '' : (r.delta>=0 ? 'up' : 'down');
   const sign = r.delta==null ? '' : (r.delta>=0 ? '+' : '');
+  const changeTitle = r.prev_as_of ? ` title="vs ${{usd(r.balance - r.delta)}} on ${{r.prev_as_of}}"` : '';
   tb.insertAdjacentHTML('beforeend',
     `<tr><td>${{r.label}}</td><td class="muted">${{r.as_of}}</td>`
     + `<td>${{usd(r.balance)}}</td>`
-    + `<td class="${{cls}}">${{r.delta==null?'—':sign+usd(r.delta)}}</td>`
-    + `<td class="${{cls}}">${{r.pct==null?'—':sign+r.pct+'%'}}</td></tr>`);
+    + `<td class="${{cls}}"${{changeTitle}}>${{r.delta==null?'—':sign+usd(r.delta)}}</td>`
+    + `<td class="${{cls}}"${{changeTitle}}>${{r.pct==null?'—':sign+r.pct+'%'}}</td></tr>`);
 }}
 
 // ---- Projection: extend the net-worth line to END_YEAR, with an
@@ -824,6 +829,9 @@ def _svg_html(model: dict) -> str:
   <div class="card"><div class="muted">Total net worth</div>
        <div class="big">${model['grand_total']:,.0f}</div>{svg}</div>
   <div class="card"><div class="muted">Accounts</div>
+       <div class="hint">Change is versus each row's own previous recorded balance, not a
+       fixed period &mdash; typically about a week, longer if a connection hasn't synced
+       recently.</div>
        <table><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody>{rows}</tbody></table></div>
 """
