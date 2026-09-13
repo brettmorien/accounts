@@ -19,7 +19,14 @@ the macOS Keychain.
   history comes from brokerage value-history exports dropped in `import/`
   (see `import/README.txt`).
 - **Storage:** plain text — `data/balances.csv`, `data/accounts.csv`,
-  `data/sync_state.json` (mode 600, gitignored).
+  `data/sync_state.json` (mode 600, gitignored). `accounts.csv` has a `tax_type`
+  column (`traditional` / `roth` / `taxable`, or blank) guessed from each
+  account's name (aggregators don't report this) as a starting point for a
+  future tax-liability model. It's a guess, not authoritative — hand-edit
+  `accounts.csv` to correct one. A sync preserves any non-blank value (a
+  correction included) but keeps re-guessing a blank cell each time, so type
+  something (e.g. `other`) once you've reviewed an account you don't want
+  re-guessed, even if none of the three buckets fit.
 - **Dashboard:** `dashboard.html`, chart library inlined → renders fully offline.
 
 ## Usage (via Claude Code skills)

@@ -63,6 +63,15 @@ def main() -> int:
           {r["source"] for r in balances} == {"import", "aggregator"})
     check("idempotent (row count unchanged on rerun)", n1 == n2)
 
+    accounts = {r["account_id"]: r for r in
+                csv.DictReader((scratch / "data" / "accounts.csv").open())}
+    check("tax_type guessed from account name (401(k) -> traditional)",
+          accounts["ACT-fid-401k"]["tax_type"] == "traditional")
+    check("tax_type guessed from account name (Roth IRA -> roth)",
+          accounts["ACT-van-roth"]["tax_type"] == "roth")
+    check("tax_type guessed from account name (Brokerage -> taxable)",
+          accounts["ACT-schwab-brk"]["tax_type"] == "taxable")
+
     # Net worth = latest LOCF total; recompute from dashboard payload.
     html = (scratch / "dashboard.html").read_text()
     check("uPlot inlined (offline)", "uPlot=function" in html)

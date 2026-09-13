@@ -43,4 +43,4 @@ BACKFILL_YEARS = 7  # first-run window when there is no history yet
 
 # CSV headers (kept explicit so files are self-describing and hand-editable).
 BALANCE_FIELDS = ["as_of", "account_id", "balance", "source"]
-ACCOUNT_FIELDS = ["account_id", "name", "org", "currency", "source", "first_seen", "active"]
+ACCOUNT_FIELDS = ["account_id", "name", "org", "currency", "tax_type", "source", "first_seen", "active"]
