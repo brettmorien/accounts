@@ -379,7 +379,7 @@ def _uplot_html(model: dict) -> str:
          to whichever you edited last. As soon as either of you retires, a bridge bucket
          (invested at the bridge bucket return below) is set aside to cover spending until
          Social Security starts, net of any income the still-working partner earns in the
-         meantime.</div></div>
+         meantime &mdash; marked on the chart above with dashed vertical lines.</div></div>
 
        <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
          <div class="controls">
@@ -545,10 +545,32 @@ const projSeries = [ {{}},
 // uPlot passes already-formatted tick strings here (but tolerate raw numbers too).
 const ysizeFn = (u, vals) => Math.max(70,
   (vals||[]).reduce((a,b)=>Math.max(a, (typeof b === 'number' ? usd(b) : String(b)).length), 0) * 8 + 22);
+// Thin vertical markers for the bridge span (drawn fresh each redraw, so they
+// track bridgeMarkers as buildProjection() recomputes it from current inputs).
+let bridgeMarkers = [];
+const yearTs = y => Math.floor(Date.UTC(y, anchorDate.getUTCMonth(), anchorDate.getUTCDate()) / 1000);
+function drawBridgeMarkers(u) {{
+  if (!bridgeMarkers.length) return;
+  const ctx = u.ctx;
+  ctx.save();
+  ctx.strokeStyle = DARK ? 'rgba(244,114,182,0.85)' : 'rgba(219,39,119,0.85)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  for (const ts of bridgeMarkers) {{
+    const x = u.valToPos(ts, 'x', true);
+    if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, u.bbox.top);
+    ctx.lineTo(x, u.bbox.top + u.bbox.height);
+    ctx.stroke();
+  }}
+  ctx.restore();
+}}
 const uProj = new uPlot({{
   width: projEl.clientWidth || 900, height: 340, scales: {{ x: {{ time: true }} }},
   axes: [ xAxis(), yAxis({{ size: ysizeFn, values: (u,vals)=>vals.map(usd) }}) ],
   legend: {{ live: true }}, series: projSeries,
+  hooks: {{ draw: [ drawBridgeMarkers ] }},
 }}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
 new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340 }})).observe(projEl);
 
@@ -672,6 +694,8 @@ function buildProjection() {{
   const drawYear = thisYear + tFirst + 1;                         // first year of household drawdown
   const firstSSYear = twoPerson ? Math.min(ssY1, ssY2) : ssY1;     // first check, either person
   const bridgeYears = Math.max(0, Math.min(firstSSYear, endYear) - drawYear);
+  // Thin vertical lines on the chart bracketing the bridge span.
+  bridgeMarkers = (bridgeYears > 0 && tFirst < years) ? [yearTs(drawYear), yearTs(firstSSYear)] : [];
   function bridgeCost(spend) {{   // today's-$ sum of net (income-offset) need over the bridge
     let sum = 0;
     for (let i = tFirst + 1; i <= tFirst + bridgeYears; i++) {{
