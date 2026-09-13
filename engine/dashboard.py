@@ -111,11 +111,6 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
     total = [round(sum(v for v in (locf[a][i] for a in locf) if v is not None), 2)
              for i in range(len(dates))]
 
-    # Order accounts by latest known value, descending (largest at stack bottom).
-    latest_val = {aid: next((v for v in reversed(locf[aid]) if v is not None), 0.0)
-                  for aid in locf}
-    acct_ordered = sorted(locf.keys(), key=lambda a: latest_val[a], reverse=True)
-
     # Composition grouping: an institution that handed off from one blended
     # history series to several live accounts would otherwise show one band
     # vanish while several new ones appear at the same instant. The import
@@ -161,20 +156,29 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
         comp_cumulative.append([round(x, 2) for x in cum[k]])
         comp_contrib.append([round(v, 2) for v in group_locf[gkey]])
 
-    # Latest-balances table: current accounts only (retired history is superseded).
+    # Latest-balances table: same grouping as the composition chart, so an
+    # institution that handed off from history to several live accounts shows
+    # one row with a delta/pct spanning the group's own combined series
+    # (continuous across the handoff) rather than one row per live account
+    # whose own history only starts the day it went live. A singleton group
+    # (no history transition) reduces to exactly the original per-account row.
     table = []
-    for aid in acct_ordered:
-        if aid in retire:
+    for gkey in comp_ordered:
+        members = group_members[gkey]
+        own_dates = {d for aid in members for d, _ in by_acct[aid]}
+        idxs = [i for i, d in enumerate(dates) if d in own_dates]
+        if not idxs:
             continue
-        series = by_acct[aid]
-        latest = series[-1]
-        prev = series[-2] if len(series) > 1 else None
-        delta = latest[1] - prev[1] if prev else None
-        pct = (delta / prev[1] * 100.0) if (prev and prev[1]) else None
+        last_i = idxs[-1]
+        prev_i = idxs[-2] if len(idxs) > 1 else None
+        latest = group_locf[gkey][last_i]
+        prev = group_locf[gkey][prev_i] if prev_i is not None else None
+        delta = latest - prev if prev is not None else None
+        pct = (delta / prev * 100.0) if prev else None
         table.append({
-            "label": _account_label(aid, accounts),
-            "as_of": latest[0],
-            "balance": round(latest[1], 2),
+            "label": _group_label(members),
+            "as_of": dates[last_i],
+            "balance": round(latest, 2),
             "delta": round(delta, 2) if delta is not None else None,
             "pct": round(pct, 2) if pct is not None else None,
         })
