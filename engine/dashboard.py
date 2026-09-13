@@ -295,16 +295,11 @@ def _uplot_html(model: dict) -> str:
        simple, deterministic model &mdash; not a substitute for professional advice. Inputs
        are saved in this browser and restored on your next visit.</div>
 
-       <div class="controls">
-         <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
-       </div>
-
-       <div class="plan-section"><div class="plan-label">Ages &amp; retirement</div>
+       <div class="plan-section"><div class="plan-label">Participants</div>
          <div class="controls">
+           <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
            <label>Your age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
-           <label>Your retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
            <label class="p2-field">Partner's age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
-           <label class="p2-field">Partner's retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
          </div></div>
 
        <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
@@ -315,11 +310,15 @@ def _uplot_html(model: dict) -> str:
            <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
          </div></div>
 
-       <div class="plan-section"><div class="plan-label">Retirement withdrawals</div>
+       <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
-           <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20">
-                  = <b id="p-withdraw-amt"></b>/yr (today's $)</label>
-         </div></div>
+           <label>Your retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
+           <label class="p2-field">Partner's retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
+           <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
+           <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
+         </div>
+         <div class="hint">Set either withdrawal field &mdash; the other updates to match.
+         Whichever you last edited stays fixed as the projected balance changes.</div></div>
 
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
@@ -328,9 +327,10 @@ def _uplot_html(model: dict) -> str:
            <label class="p2-field">Partner's benefit $/mo at FRA <input type="number" id="p-ss-benefit2" value="4018" step="50" min="0"></label>
            <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70"></label>
          </div>
-         <div class="hint">Defaults to the 2025 maximum ($4,018/mo at full retirement age, 67);
-         use the estimate on your ssa.gov statement for an accurate projection. Early claiming
-         (as young as 62) reduces the benefit; delaying (to 70) increases it.</div></div>
+         <div class="hint">Defaults to the 2025 maximum ($4,018/mo at full retirement age);
+         use the estimate on your ssa.gov statement for an accurate projection. Full retirement
+         age depends on birth year (65&ndash;67); early claiming (as young as 62) reduces the
+         benefit, delaying (to 70) increases it.</div></div>
 
        <div id="chart-proj"></div>
        <div id="proj-summary" style="margin-top:8px">
@@ -488,13 +488,23 @@ new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340
 
 const END_YEAR = 2080;   // projections always run to the same horizon
 
-// Social Security claiming-age factor vs full retirement age (67): claiming early
-// reduces the benefit (5/9%/mo for the first 36 months, 5/12%/mo beyond); delaying
-// adds 2/3%/mo (8%/yr) up to age 70.
-function ssFactor(age) {{
-  const FRA = 67;
+// Full retirement age (FRA) by birth year, per the SSA schedule -- it isn't a
+// flat 67 for everyone: it phases up from 65 (born 1937 or earlier) to 67
+// (born 1960 or later) in two-month steps.
+function fullRetirementAge(birthYear) {{
+  if (birthYear <= 1937) return 65;
+  if (birthYear <= 1942) return 65 + (birthYear - 1937) * 2/12;
+  if (birthYear <= 1954) return 66;
+  if (birthYear <= 1959) return 66 + (birthYear - 1954) * 2/12;
+  return 67;
+}}
+
+// Social Security claiming-age factor vs full retirement age: claiming early
+// reduces the benefit (5/9%/mo for the first 36 months before FRA, 5/12%/mo
+// beyond that); delaying adds 2/3%/mo (8%/yr) up to age 70.
+function ssFactor(age, fra) {{
   age = Math.max(62, Math.min(70, age));
-  const months = (age - FRA) * 12;
+  const months = (age - fra) * 12;
   if (months < 0) {{
     const early = -months;
     const pct = Math.min(early, 36) * (5/9) + Math.max(0, early - 36) * (5/12);
@@ -506,15 +516,18 @@ function ssFactor(age) {{
 // ---- Persist planning inputs across page refreshes (localStorage; this is a
 // local file opened offline, so nothing leaves the browser).
 const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-contrib',
-  'p-withdraw', 'p-infl', 'p-age', 'p-age2', 'p-retire-age', 'p-retire-age2',
-  'p-ss-age', 'p-ss-age2', 'p-ss-benefit', 'p-ss-benefit2'];
+  'p-withdraw', 'p-withdraw-amt', 'p-infl', 'p-age', 'p-age2',
+  'p-retire-age', 'p-retire-age2', 'p-ss-age', 'p-ss-age2',
+  'p-ss-benefit', 'p-ss-benefit2'];
 const PLAN_STORAGE_KEY = 'financialPlanningInputs.v1';
+let withdrawMode = 'pct';   // 'pct' or 'amount' -- whichever field the user edited last
 
 function loadPlanInputs() {{
   try {{
     const saved = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || '{{}}');
     PLAN_FIELDS.forEach(id => {{ if (saved[id] != null) gid(id).value = saved[id]; }});
     if (typeof saved['p-two-person'] === 'boolean') gid('p-two-person').checked = saved['p-two-person'];
+    if (saved.withdrawMode === 'pct' || saved.withdrawMode === 'amount') withdrawMode = saved.withdrawMode;
   }} catch (e) {{}}
 }}
 function savePlanInputs() {{
@@ -522,6 +535,7 @@ function savePlanInputs() {{
     const out = {{}};
     PLAN_FIELDS.forEach(id => {{ out[id] = gid(id).value; }});
     out['p-two-person'] = gid('p-two-person').checked;
+    out.withdrawMode = withdrawMode;
     localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(out));
   }} catch (e) {{}}
 }}
@@ -555,20 +569,26 @@ function buildProjection() {{
   const retireYear2 = thisYear + Math.max(0, retireAge2 - curAge2);
   const retireYear = twoPerson ? Math.max(retireYear1, retireYear2) : retireYear1;
   const tStop = Math.max(0, Math.min(years, retireYear - thisYear));
-  // Social Security: each person's own estimated benefit at full retirement age (67),
-  // scaled by their own claiming age. Spouses often claim at different ages (e.g. the
-  // lower earner claims early while the higher earner delays to 70), so both the age
-  // and the benefit estimate are tracked per person rather than assumed shared/maxed.
+  // Social Security: each person's own estimated benefit at THEIR OWN full retirement
+  // age -- FRA isn't a flat 67, it depends on birth year (derived from current age),
+  // scaled further by their own claiming age. Spouses often claim at different ages
+  // (e.g. the lower earner claims early while the higher earner delays to 70), so age,
+  // FRA, and benefit estimate are all tracked per person rather than assumed shared/maxed.
   const ssStartAge = +gid('p-ss-age').value || 65;
   const ssStartAge2 = +gid('p-ss-age2').value || 65;
-  const ssAnnual = (+gid('p-ss-benefit').value || 0) * 12 * ssFactor(ssStartAge);
-  const ssAnnual2 = twoPerson ? (+gid('p-ss-benefit2').value || 0) * 12 * ssFactor(ssStartAge2) : 0;
+  const fra1 = fullRetirementAge(thisYear - curAge);
+  const fra2 = fullRetirementAge(thisYear - curAge2);
+  const ssAnnual = (+gid('p-ss-benefit').value || 0) * 12 * ssFactor(ssStartAge, fra1);
+  const ssAnnual2 = twoPerson ? (+gid('p-ss-benefit2').value || 0) * 12 * ssFactor(ssStartAge2, fra2) : 0;
   const ssY1 = thisYear + Math.max(0, ssStartAge - curAge);    // when person 1 claims
   const ssY2 = thisYear + Math.max(0, ssStartAge2 - curAge2);  // when person 2 claims
 
-  // The withdrawal rate is applied once, to the balance the year drawdown starts;
-  // that fixes the spending in today's dollars for the rest of the projection.
-  let W = wPct * anchorVal;
+  // The withdrawal rate/amount is fixed once, to the balance the year drawdown starts
+  // (in today's $); that fixes spending for the rest of the projection. Percent and
+  // dollar amount are two views of the same number -- whichever the user last edited
+  // (withdrawMode) drives it, and the other field is recomputed to match below.
+  let balAtRetireReal = anchorVal;   // today's-$ balance when drawdown starts
+  let W = (withdrawMode === 'amount') ? (+gid('p-withdraw-amt').value || 0) : wPct * balAtRetireReal;
   const futTs = [], nominal = [], real = [];
   let bal = anchorVal, depletedYear = null;
   for (let t = 1; t <= years; t++) {{
@@ -576,7 +596,10 @@ function buildProjection() {{
     bal *= (1 + (t <= tStop ? r : rRetired));   // glide to a more conservative return after retirement
     if (t <= tStop) {{
       bal += c;                              // accumulation: add contribution (end of year)
-      if (t === tStop) W = wPct * bal / Math.pow(1 + infl, t);   // rate × nest egg, today's $
+      if (t === tStop) {{
+        balAtRetireReal = bal / Math.pow(1 + infl, t);
+        W = (withdrawMode === 'amount') ? (+gid('p-withdraw-amt').value || 0) : wPct * balAtRetireReal;
+      }}
     }} else {{
       // Drawdown: spend W (today's $); each person's SS offsets it once they claim.
       let ssReal = 0;
@@ -598,7 +621,14 @@ function buildProjection() {{
                   nom.concat(nominal),
                   rl.concat(real) ]);
 
-  gid('p-withdraw-amt').textContent = usd(W);
+  // Sync whichever withdrawal field the user did NOT just edit, so both always
+  // agree with the projection.
+  const effPct = balAtRetireReal > 0 ? (W / balAtRetireReal * 100) : 0;
+  if (withdrawMode === 'amount') {{
+    gid('p-withdraw').value = effPct.toFixed(2);
+  }} else {{
+    gid('p-withdraw-amt').value = Math.round(W);
+  }}
 
   const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
   const endReal = real.length ? real[real.length - 1] : anchorVal;
@@ -616,7 +646,7 @@ function buildProjection() {{
   if (W && tStop < years) {{
     // Spending is fixed in real terms, so its nominal amount grows with inflation.
     const nomLast = W * Math.pow(1 + infl, years);
-    bits.push((wPct * 100).toFixed(2) + '% withdrawal = ' + usd(W) + "/yr today's $ from "
+    bits.push(effPct.toFixed(2) + '% withdrawal = ' + usd(W) + "/yr today's $ from "
       + drawYear + ' (' + usd(nomLast) + '/yr nominal by ' + endYear + ')');
   }}
   bits.push('Social Security: ' + usd(ssAnnual) + '/yr at ' + ssStartAge + ' (you, from ' + ssY1 + ')'
@@ -632,8 +662,11 @@ function buildProjection() {{
   }}
   gid('proj-assume').textContent = bits.join(' · ');
 }}
-PLAN_FIELDS.forEach(id => gid(id).addEventListener('input', () => {{ savePlanInputs(); buildProjection(); }}));
-gid('p-two-person').addEventListener('change', () => {{ updateTwoPerson(); savePlanInputs(); buildProjection(); }});
+PLAN_FIELDS.filter(id => id !== 'p-withdraw' && id !== 'p-withdraw-amt').forEach(id =>
+  gid(id).addEventListener('input', () => {{ buildProjection(); savePlanInputs(); }}));
+gid('p-withdraw').addEventListener('input', () => {{ withdrawMode = 'pct'; buildProjection(); savePlanInputs(); }});
+gid('p-withdraw-amt').addEventListener('input', () => {{ withdrawMode = 'amount'; buildProjection(); savePlanInputs(); }});
+gid('p-two-person').addEventListener('change', () => {{ updateTwoPerson(); buildProjection(); savePlanInputs(); }});
 buildProjection();
 </script>
 """
