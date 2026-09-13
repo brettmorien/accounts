@@ -290,10 +290,8 @@ def _uplot_html(model: dict) -> str:
 
   <div id="tab-planning" class="tab-panel" hidden>
   <div class="card"><div class="muted">Retirement Planning</div>
-       <div class="hint">Projects your total net worth forward from today's balance using
-       adjustable growth, contribution, withdrawal, and Social Security assumptions. A
-       simple, deterministic model &mdash; not a substitute for professional advice. Inputs
-       are saved in this browser and restored on your next visit.</div>
+       <div class="hint">Projects your net worth forward from today's balance. Not financial
+       advice &mdash; inputs are saved in this browser and restored next time.</div>
 
        <div class="plan-section"><div class="plan-label">Participants</div>
          <div class="controls">
@@ -317,8 +315,8 @@ def _uplot_html(model: dict) -> str:
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
            <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
          </div>
-         <div class="hint">Set either withdrawal field &mdash; the other updates to match.
-         Whichever you last edited stays fixed as the projected balance changes.</div></div>
+         <div class="hint">Set either field &mdash; the other updates to match, pinned to
+         whichever you edited last.</div></div>
 
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
@@ -327,9 +325,8 @@ def _uplot_html(model: dict) -> str:
            <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70">
                   = <b id="p-ss-mo2"></b>/mo</label>
          </div>
-         <div class="hint">Assumes the 2025 maximum benefit ($4,018/mo at full retirement age)
-         for each person. Full retirement age depends on birth year (65&ndash;67); early claiming
-         (as young as 62) reduces the benefit, delaying (to 70) increases it.</div></div>
+         <div class="hint">Assumes the 2025 maximum ($4,018/mo) at full retirement age, which
+         depends on birth year (65&ndash;67).</div></div>
 
        <div id="chart-proj"></div>
        <div id="proj-summary" style="margin-top:8px">
