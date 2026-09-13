@@ -694,8 +694,10 @@ function buildProjection() {{
   const drawYear = thisYear + tFirst + 1;                         // first year of household drawdown
   const firstSSYear = twoPerson ? Math.min(ssY1, ssY2) : ssY1;     // first check, either person
   const bridgeYears = Math.max(0, Math.min(firstSSYear, endYear) - drawYear);
-  // Thin vertical lines on the chart bracketing the bridge span.
-  bridgeMarkers = (bridgeYears > 0 && tFirst < years) ? [yearTs(drawYear), yearTs(firstSSYear)] : [];
+  // Thin vertical lines on the chart bracketing the bridge span -- from the year
+  // the bucket is set aside (thisYear+tFirst) to the year it's drawn down to zero
+  // (firstSSYear), matching where the bridge bucket series itself is non-null.
+  bridgeMarkers = (bridgeYears > 0 && tFirst < years) ? [yearTs(thisYear + tFirst), yearTs(firstSSYear)] : [];
   // Present value (today's $) of the bridge's net need, discounted at the bucket's
   // OWN return relative to inflation -- not just summed flat. A bucket earning more
   // than inflation grows in real terms while it sits there, so less needs to be set
