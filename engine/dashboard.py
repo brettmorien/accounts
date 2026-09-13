@@ -9,6 +9,7 @@ Balances are observed on irregular dates (statements = month-end; aggregator =
 run day), so every account is expanded to a last-observation-carried-forward
 (LOCF) series over the union of dates before summing into net worth.
 """
+import bisect
 import datetime as dt
 import html
 import json
@@ -158,10 +159,13 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
 
     # Latest-balances table: same grouping as the composition chart, so an
     # institution that handed off from history to several live accounts shows
-    # one row with a delta/pct spanning the group's own combined series
-    # (continuous across the handoff) rather than one row per live account
-    # whose own history only starts the day it went live. A singleton group
-    # (no history transition) reduces to exactly the original per-account row.
+    # one row (continuous across the handoff) rather than one per live account.
+    # Change is a true day-over-day comparison -- each row's own latest known
+    # date against its LOCF value exactly one calendar day earlier -- rather
+    # than "since the last time this row happened to update," which could
+    # silently span anywhere from a day to months and wasn't comparable
+    # between rows. A stale connection honestly shows $0/0% (no new
+    # information), which the "As of" date and hover tooltip make clear.
     table = []
     for gkey in comp_ordered:
         members = group_members[gkey]
@@ -170,14 +174,17 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
         if not idxs:
             continue
         last_i = idxs[-1]
-        prev_i = idxs[-2] if len(idxs) > 1 else None
+        as_of = dates[last_i]
+        target = (dt.datetime.strptime(as_of, "%Y-%m-%d") - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        prev_i = bisect.bisect_right(dates, target) - 1
+        prev_i = prev_i if prev_i >= 0 else None
         latest = group_locf[gkey][last_i]
         prev = group_locf[gkey][prev_i] if prev_i is not None else None
         delta = latest - prev if prev is not None else None
         pct = (delta / prev * 100.0) if prev else None
         table.append({
             "label": _group_label(members),
-            "as_of": dates[last_i],
+            "as_of": as_of,
             "prev_as_of": dates[prev_i] if prev_i is not None else None,
             "balance": round(latest, 2),
             "delta": round(delta, 2) if delta is not None else None,
@@ -323,9 +330,9 @@ def _uplot_html(model: dict) -> str:
        <div id="chart-comp"></div>
        <div id="comp-legend" class="legend"></div></div>
   <div class="card"><div class="muted">Accounts</div>
-       <div class="hint">Change is versus each row's own previous recorded balance, not a
-       fixed period &mdash; typically about a week, longer if a connection hasn't synced
-       recently. Hover a Change cell for the exact dates compared.</div>
+       <div class="hint">Change is a day-over-day comparison for each row's own latest known
+       date. A stale connection shows $0/0% (no new data) rather than an old, misleading
+       move. Hover a Change cell for the exact dates compared.</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
   </div>
@@ -363,14 +370,6 @@ def _uplot_html(model: dict) -> str:
          <div class="hint p2-field">Each person's contribution stops at their own retirement
          age &mdash; the other keeps saving through any gap between the two.</div></div>
 
-       <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
-         <div class="controls">
-           <label>Return while saving %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
-           <label>Return in retirement %/yr <input type="number" id="p-return-retired" value="5" step="0.5" min="0" max="25"></label>
-           <label>Bridge bucket return %/yr <input type="number" id="p-bucket-return" value="3" step="0.25" min="0" max="20"></label>
-           <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
-         </div></div>
-
        <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
@@ -378,9 +377,19 @@ def _uplot_html(model: dict) -> str:
          </div>
          <div class="hint">Set withdraw %/yr or $/yr &mdash; the other updates to match, pinned
          to whichever you edited last. As soon as either of you retires, a bridge bucket
-         (invested at the bridge bucket return above) is set aside to cover spending until
+         (invested at the bridge bucket return below) is set aside to cover spending until
          Social Security starts, net of any income the still-working partner earns in the
          meantime.</div></div>
+
+       <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
+         <div class="controls">
+           <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
+         </div>
+         <div class="controls">
+           <label>Return while saving %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
+           <label>Return in retirement %/yr <input type="number" id="p-return-retired" value="5" step="0.5" min="0" max="25"></label>
+           <label>Bridge bucket return %/yr <input type="number" id="p-bucket-return" value="3" step="0.25" min="0" max="20"></label>
+         </div></div>
 
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
@@ -829,9 +838,9 @@ def _svg_html(model: dict) -> str:
   <div class="card"><div class="muted">Total net worth</div>
        <div class="big">${model['grand_total']:,.0f}</div>{svg}</div>
   <div class="card"><div class="muted">Accounts</div>
-       <div class="hint">Change is versus each row's own previous recorded balance, not a
-       fixed period &mdash; typically about a week, longer if a connection hasn't synced
-       recently.</div>
+       <div class="hint">Change is a day-over-day comparison for each row's own latest known
+       date. A stale connection shows $0/0% (no new data) rather than an old, misleading
+       move.</div>
        <table><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody>{rows}</tbody></table></div>
 """
