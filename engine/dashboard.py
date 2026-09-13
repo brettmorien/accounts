@@ -243,6 +243,10 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
   .plan-section {{ margin: 16px 0; }}
   .plan-section .plan-label {{ font-size: 11px; font-weight: 700; color: #71717a;
         text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }}
+  .person-row {{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+        font-size: 12px; margin: 6px 0; }}
+  .person-row .person-tag {{ font-weight: 700; min-width: 52px; color: #52525b; }}
+  .person-row label {{ display: inline-flex; align-items: center; gap: 6px; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
@@ -254,6 +258,7 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
     .tab-btn {{ color: #a1a1aa; }}
     .tab-btn.active {{ color: #e4e4e7; }}
     .plan-section .plan-label {{ color: #a1a1aa; }}
+    .person-row .person-tag {{ color: #d4d4d8; }}
   }}
   {head}
 </style></head>
@@ -301,8 +306,16 @@ def _uplot_html(model: dict) -> str:
        <div class="plan-section"><div class="plan-label">Participants</div>
          <div class="controls">
            <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
-           <label>Your age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
-           <label class="p2-field">Partner's age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
+         </div>
+         <div class="person-row">
+           <span class="person-tag">You</span>
+           <label>Age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
+           <label>Income $/yr while working <input type="number" id="p-income" value="0" step="1000" min="0"></label>
+         </div>
+         <div class="person-row p2-field">
+           <span class="person-tag">Partner</span>
+           <label>Age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
+           <label>Income $/yr while working <input type="number" id="p-income2" value="0" step="1000" min="0"></label>
          </div></div>
 
        <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
@@ -322,8 +335,6 @@ def _uplot_html(model: dict) -> str:
          <div class="controls">
            <label>Your retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
            <label class="p2-field">Partner's retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
-           <label class="p2-field">Your income $/yr while working <input type="number" id="p-income" value="0" step="1000" min="0"></label>
-           <label class="p2-field">Partner's income $/yr while working <input type="number" id="p-income2" value="0" step="1000" min="0"></label>
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
            <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
          </div>
