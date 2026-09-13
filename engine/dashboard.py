@@ -310,28 +310,29 @@ def _uplot_html(model: dict) -> str:
          <div class="person-row">
            <span class="person-tag">You</span>
            <label>Age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
-           <label>Retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90"></label>
+           <label>Retirement age <input type="number" id="p-retire-age" value="65" step="1" min="40" max="90">
+                  &rarr; <b id="p-retire-year"></b></label>
+           <label>$/yr added <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
            <label>Income $/yr while working <input type="number" id="p-income" value="0" step="1000" min="0"></label>
          </div>
          <div class="person-row p2-field">
            <span class="person-tag">Partner</span>
            <label>Age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
-           <label>Retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90"></label>
+           <label>Retirement age <input type="number" id="p-retire-age2" value="65" step="1" min="40" max="90">
+                  &rarr; <b id="p-retire-year2"></b></label>
+           <label>$/yr added <input type="number" id="p-contrib2" value="0" step="1000" min="0"></label>
            <label>Income $/yr while working <input type="number" id="p-income2" value="0" step="1000" min="0"></label>
-         </div></div>
+         </div>
+         <div class="hint p2-field">Each person's contribution stops at their own retirement
+         age &mdash; the other keeps saving through any gap between the two.</div></div>
 
        <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
          <div class="controls">
            <label>Return while saving %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
            <label>Return in retirement %/yr <input type="number" id="p-return-retired" value="5" step="0.5" min="0" max="25"></label>
-           <label>Bucket return %/yr <input type="number" id="p-bucket-return" value="3" step="0.25" min="0" max="20"></label>
+           <label>Bridge bucket return %/yr <input type="number" id="p-bucket-return" value="3" step="0.25" min="0" max="20"></label>
            <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
-           <label>Your $/yr added <input type="number" id="p-contrib" value="0" step="1000" min="0"></label>
-           <label class="p2-field">Partner's $/yr added <input type="number" id="p-contrib2" value="0" step="1000" min="0"></label>
-         </div>
-         <div class="hint p2-field">Each person's contribution stops at their own retirement
-         age above &mdash; the other keeps saving through any gap between the two. The bucket
-         return is the safer, lower rate for the bridge bucket below.</div></div>
+         </div></div>
 
        <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
@@ -339,9 +340,10 @@ def _uplot_html(model: dict) -> str:
            <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
          </div>
          <div class="hint">Set withdraw %/yr or $/yr &mdash; the other updates to match, pinned
-         to whichever you edited last. As soon as either of you retires, a bucket (invested at
-         the safer bucket return above) is set aside to cover spending until Social Security
-         starts, net of any income the still-working partner earns in the meantime.</div></div>
+         to whichever you edited last. As soon as either of you retires, a bridge bucket
+         (invested at the bridge bucket return above) is set aside to cover spending until
+         Social Security starts, net of any income the still-working partner earns in the
+         meantime.</div></div>
 
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
@@ -589,6 +591,9 @@ function buildProjection() {{
   const retireAge2 = +gid('p-retire-age2').value || 65;
   const retireYear1 = thisYear + Math.max(0, retireAge - curAge);
   const retireYear2 = thisYear + Math.max(0, retireAge2 - curAge2);
+  // Live readout right next to each retirement age input.
+  gid('p-retire-year').textContent = retireYear1;
+  gid('p-retire-year2').textContent = retireYear2;
   const tStop1 = Math.max(0, Math.min(years, retireYear1 - thisYear));
   const tStop2 = Math.max(0, Math.min(years, retireYear2 - thisYear));
   const tFirst = twoPerson ? Math.min(tStop1, tStop2) : tStop1;
@@ -715,7 +720,7 @@ function buildProjection() {{
 
   // One bullet per assumption, so the line stays scannable as inputs change.
   const bits = [(r * 100).toFixed(1) + '%/yr while saving', (rRetired * 100).toFixed(1) + '%/yr in retirement',
-                (bucketReturn * 100).toFixed(1) + '%/yr bucket', (infl * 100).toFixed(1) + '%/yr inflation'];
+                (bucketReturn * 100).toFixed(1) + '%/yr bridge bucket', (infl * 100).toFixed(1) + '%/yr inflation'];
   if (c1) bits.push('your ' + usd(c1) + '/yr added until ' + retireYear1);
   if (twoPerson && c2) bits.push("partner's " + usd(c2) + '/yr added until ' + retireYear2);
   if (income1) bits.push('your ' + usd(income1) + '/yr income until ' + retireYear1);
