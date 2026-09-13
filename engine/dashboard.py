@@ -330,9 +330,8 @@ def _uplot_html(model: dict) -> str:
        <div id="chart-comp"></div>
        <div id="comp-legend" class="legend"></div></div>
   <div class="card"><div class="muted">Accounts</div>
-       <div class="hint">Change is a day-over-day comparison for each row's own latest known
-       date. A stale connection shows $0/0% (no new data) rather than an old, misleading
-       move. Hover a Change cell for the exact dates compared.</div>
+       <div class="hint">Change is day-over-day &mdash; a stale connection shows $0/0% rather
+       than an old move.</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
   </div>
@@ -340,7 +339,7 @@ def _uplot_html(model: dict) -> str:
   <div id="tab-planning" class="tab-panel" hidden>
   <div class="card"><div class="muted">Retirement Planning</div>
        <div class="hint">Projects your net worth forward from today's balance. Not financial
-       advice &mdash; inputs are saved in this browser and restored next time.</div>
+       advice; inputs are saved in this browser.</div>
 
        <div id="chart-proj"></div>
        <div id="proj-summary" style="margin-top:8px">
@@ -368,18 +367,16 @@ def _uplot_html(model: dict) -> str:
            <label>Income $/yr while working <input type="number" id="p-income2" value="0" step="1000" min="0"></label>
          </div>
          <div class="hint p2-field">Each person's contribution stops at their own retirement
-         age &mdash; the other keeps saving through any gap between the two.</div></div>
+         age; the other keeps saving through any gap.</div></div>
 
        <div class="plan-section"><div class="plan-label">Retirement</div>
          <div class="controls">
            <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20"></label>
            <label>or $/yr (today's $) <input type="number" id="p-withdraw-amt" step="1000" min="0"></label>
          </div>
-         <div class="hint">Set withdraw %/yr or $/yr &mdash; the other updates to match, pinned
-         to whichever you edited last. As soon as either of you retires, a bridge bucket
-         (invested at the bridge bucket return below) is set aside to cover spending until
-         Social Security starts, net of any income the still-working partner earns in the
-         meantime &mdash; marked on the chart above with dashed vertical lines.</div></div>
+         <div class="hint">Set either field &mdash; the other updates to match, pinned to
+         whichever you edited last. A bridge bucket (return rate below) funds spending from
+         the first retirement to Social Security, net of any income still coming in.</div></div>
 
        <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
          <div class="controls">
@@ -398,8 +395,8 @@ def _uplot_html(model: dict) -> str:
            <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70">
                   = <b id="p-ss-mo2"></b>/mo</label>
          </div>
-         <div class="hint">Assumes the 2025 maximum ($4,018/mo) at full retirement age, which
-         depends on birth year (65&ndash;67).</div></div>
+         <div class="hint">Assumes the 2025 max ($4,018/mo) at full retirement age
+         (65&ndash;67, by birth year).</div></div>
   </div>
   </div>
 """
@@ -869,9 +866,8 @@ def _svg_html(model: dict) -> str:
   <div class="card"><div class="muted">Total net worth</div>
        <div class="big">${model['grand_total']:,.0f}</div>{svg}</div>
   <div class="card"><div class="muted">Accounts</div>
-       <div class="hint">Change is a day-over-day comparison for each row's own latest known
-       date. A stale connection shows $0/0% (no new data) rather than an old, misleading
-       move.</div>
+       <div class="hint">Change is day-over-day &mdash; a stale connection shows $0/0% rather
+       than an old move.</div>
        <table><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody>{rows}</tbody></table></div>
 """
