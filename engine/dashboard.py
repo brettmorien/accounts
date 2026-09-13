@@ -539,7 +539,9 @@ const thisYear = anchorDate.getUTCFullYear();
 const projSeries = [ {{}},
   {{ label: 'History', stroke: '#2563eb', width: 2, fill: 'rgba(37,99,235,0.10)', value: (u,v)=>usd(v) }},
   {{ label: 'Projected (nominal)', stroke: '#7c3aed', width: 2, dash: [6,4], value: (u,v)=>usd(v) }},
-  {{ label: "Projected (today's $)", stroke: '#0891b2', width: 2, dash: [2,4], value: (u,v)=>usd(v) }} ];
+  {{ label: "Projected (today's $)", stroke: '#0891b2', width: 2, dash: [2,4], value: (u,v)=>usd(v) }},
+  {{ label: "Bridge bucket (today's $)", stroke: '#db2777', width: 2,
+     fill: 'rgba(219,39,119,0.15)', value: (u,v)=>usd(v) }} ];
 // uPlot passes already-formatted tick strings here (but tolerate raw numbers too).
 const ysizeFn = (u, vals) => Math.max(70,
   (vals||[]).reduce((a,b)=>Math.max(a, (typeof b === 'number' ? usd(b) : String(b)).length), 0) * 8 + 22);
@@ -569,7 +571,7 @@ const uProj = new uPlot({{
   axes: [ xAxis(), yAxis({{ size: ysizeFn, values: (u,vals)=>vals.map(usd) }}) ],
   legend: {{ live: true }}, series: projSeries,
   hooks: {{ draw: [ drawBridgeMarkers ] }},
-}}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
+}}, [ DATA.x, DATA.total, DATA.x.map(()=>null), DATA.x.map(()=>null), DATA.x.map(()=>null) ], projEl);
 new ResizeObserver(() => uProj.setSize({{ width: projEl.clientWidth, height: 340 }})).observe(projEl);
 
 const END_YEAR = 2080;   // projections always run to the same horizon
@@ -719,12 +721,13 @@ function buildProjection() {{
   let balAtRetireReal = anchorVal;   // today's-$ balance when drawdown starts
   let W = (withdrawMode === 'amount') ? (+gid('p-withdraw-amt').value || 0) : wPct * balAtRetireReal;
   let bridgeReal = bridgeCost(W);                   // today's-$ size of the bridge bucket
-  const futTs = [], nominal = [], real = [];
+  const futTs = [], nominal = [], real = [], bucketSeries = [];
   let bal = anchorVal, bucketNom = 0, remNom = 0, depletedYear = null;
   if (tFirst === 0) {{   // someone has already retired today: size the bucket now
     bucketNom = Math.min(bridgeReal, balAtRetireReal);
     remNom = bal - bucketNom;
   }}
+  const anchorBucketReal = bucketNom > 0 ? bucketNom : null;   // bucket already exists today
   for (let t = 1; t <= years; t++) {{
     const ms = Date.UTC(thisYear + t, anchorDate.getUTCMonth(), anchorDate.getUTCDate());
     const contribAmt = (t <= tStop1 ? c1 : 0) + (twoPerson && t <= tStop2 ? c2 : 0);
@@ -768,14 +771,17 @@ function buildProjection() {{
     futTs.push(Math.floor(ms / 1000));
     nominal.push(bal);
     real.push(bal / Math.pow(1 + infl, t));  // deflate to today's purchasing power
+    bucketSeries.push(bucketNom > 0 ? bucketNom / Math.pow(1 + infl, t) : null);
   }}
   const nHist = DATA.x.length;
   const nom = DATA.x.map(()=>null); nom[nHist - 1] = anchorVal;   // anchor at latest point
   const rl  = DATA.x.map(()=>null); rl[nHist - 1]  = anchorVal;
+  const bkt = DATA.x.map(()=>null); bkt[nHist - 1] = anchorBucketReal;
   uProj.setData([ DATA.x.concat(futTs),
                   DATA.total.concat(futTs.map(()=>null)),
                   nom.concat(nominal),
-                  rl.concat(real) ]);
+                  rl.concat(real),
+                  bkt.concat(bucketSeries) ]);
 
   // Sync whichever withdrawal field the user did NOT just edit, so both always
   // agree with the projection.
