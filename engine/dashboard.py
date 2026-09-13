@@ -231,9 +231,18 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
   .controls label {{ display: inline-flex; align-items: center; gap: 6px; }}
   .controls .grp {{ display: inline-flex; align-items: center; gap: 18px; }}
   .controls input[type=number] {{ width: 76px; padding: 2px 4px; }}
-  #proj-summary .headline {{ font-size: 14px; color: #3f3f46; }}
-  #proj-summary .assume {{ font-size: 12px; color: #71717a; margin-top: 3px; }}
+  #proj-summary .headline {{ font-size: 15px; font-weight: 600; color: #3f3f46; }}
+  #proj-summary .assume {{ font-size: 12px; color: #71717a; margin-top: 3px; line-height: 1.6; }}
   #proj-summary .warn {{ color: #dc2626; }}
+  .tabs {{ display: flex; gap: 4px; margin: 16px 0 0; border-bottom: 1px solid #e4e4e7; }}
+  .tab-btn {{ background: none; border: none; cursor: pointer; padding: 9px 16px 10px;
+        font: inherit; font-size: 13.5px; color: #71717a; border-bottom: 2px solid transparent;
+        margin-bottom: -1px; }}
+  .tab-btn.active {{ color: #18181b; border-bottom-color: #2563eb; font-weight: 650; }}
+  .tab-panel[hidden] {{ display: none; }}
+  .plan-section {{ margin: 16px 0; }}
+  .plan-section .plan-label {{ font-size: 11px; font-weight: 700; color: #71717a;
+        text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
@@ -241,6 +250,10 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
     #proj-summary .headline {{ color: #e4e4e7; }}
     #proj-summary .assume {{ color: #a1a1aa; }}
     #proj-summary .warn {{ color: #f87171; }}
+    .tabs {{ border-color: #27272a; }}
+    .tab-btn {{ color: #a1a1aa; }}
+    .tab-btn.active {{ color: #e4e4e7; }}
+    .plan-section .plan-label {{ color: #a1a1aa; }}
   }}
   {head}
 </style></head>
@@ -256,6 +269,13 @@ def _uplot_html(model: dict) -> str:
   <h1>Investment Trends</h1>
   <div class="muted">Net worth as of {html.escape(model['datelabels'][-1])} ·
        generated {html.escape(model['generated'])}</div>
+
+  <nav class="tabs">
+    <button class="tab-btn" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="planning">Planning</button>
+  </nav>
+
+  <div id="tab-overview" class="tab-panel">
   <div class="card"><div class="muted">Total net worth</div>
        <div class="big" id="grand"></div>
        <div id="chart-total"></div></div>
@@ -263,27 +283,59 @@ def _uplot_html(model: dict) -> str:
        <div class="hint">Click an account to show only that one; click it again to restore all.</div>
        <div id="chart-comp"></div>
        <div id="comp-legend" class="legend"></div></div>
-  <div class="card"><div class="muted">Projection</div>
+  <div class="card"><div class="muted">Accounts</div>
+       <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
+       <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div id="tab-planning" class="tab-panel" hidden>
+  <div class="card"><div class="muted">Retirement Planning</div>
+       <div class="hint">Projects your total net worth forward from today's balance using
+       adjustable growth, contribution, withdrawal, and Social Security assumptions. A
+       simple, deterministic model &mdash; not a substitute for professional advice. Inputs
+       are saved in this browser and restored on your next visit.</div>
+
        <div class="controls">
-         <label>Return %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
-         <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
-                until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
-         <span class="grp">
-           <label>then withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20">
-                  = <b id="p-withdraw-amt"></b>/yr (today's $)</label>
-           <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
-         </span>
-         <label>age 1 <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
-         <label>age 2 <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
-         <label>SS start age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70"></label>
+         <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
        </div>
+
+       <div class="plan-section"><div class="plan-label">Ages</div>
+         <div class="controls">
+           <label>Your age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
+           <label class="p2-field">Partner's age <input type="number" id="p-age2" value="42" step="1" min="18" max="90"></label>
+         </div></div>
+
+       <div class="plan-section"><div class="plan-label">Growth &amp; contributions</div>
+         <div class="controls">
+           <label>Return while saving %/yr <input type="number" id="p-return" value="7" step="0.5" min="0" max="25"></label>
+           <label>Return in retirement %/yr <input type="number" id="p-return-retired" value="5" step="0.5" min="0" max="25"></label>
+           <label>Inflation %/yr <input type="number" id="p-infl" value="3" step="0.25" min="0" max="20"></label>
+           <label>Added $/yr <input type="number" id="p-contrib" value="0" step="1000" min="0">
+                  until <input type="number" id="p-contrib-until" value="2032" step="1" min="2027" max="2080"></label>
+         </div></div>
+
+       <div class="plan-section"><div class="plan-label">Retirement withdrawals</div>
+         <div class="controls">
+           <label>Withdraw %/yr <input type="number" id="p-withdraw" value="4" step="0.25" min="0" max="20">
+                  = <b id="p-withdraw-amt"></b>/yr (today's $)</label>
+         </div></div>
+
+       <div class="plan-section"><div class="plan-label">Social Security</div>
+         <div class="controls">
+           <label>Your benefit $/mo at FRA <input type="number" id="p-ss-benefit" value="4018" step="50" min="0"></label>
+           <label>Your claiming age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70"></label>
+           <label class="p2-field">Partner's benefit $/mo at FRA <input type="number" id="p-ss-benefit2" value="4018" step="50" min="0"></label>
+           <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70"></label>
+         </div>
+         <div class="hint">Defaults to the 2025 maximum ($4,018/mo at full retirement age, 67);
+         use the estimate on your ssa.gov statement for an accurate projection. Early claiming
+         (as young as 62) reduces the benefit; delaying (to 70) increases it.</div></div>
+
        <div id="chart-proj"></div>
        <div id="proj-summary" style="margin-top:8px">
          <div class="headline" id="proj-headline"></div>
          <div class="assume" id="proj-assume"></div></div></div>
-  <div class="card"><div class="muted">Accounts</div>
-       <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
-       <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
+  </div>
 """
     head = f"<style>{uplot_css}</style>"
     script = f"""
@@ -382,6 +434,22 @@ function compHoverValues(u) {{
   }});
 }}
 
+// ---- Tabs: Overview vs Planning. Selection persists across refreshes.
+const tabBtns = document.querySelectorAll('.tab-btn');
+function selectTab(name) {{
+  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => {{
+    p.hidden = (p.id !== 'tab-' + name);
+  }});
+}}
+tabBtns.forEach(btn => btn.addEventListener('click', () => {{
+  selectTab(btn.dataset.tab);
+  try {{ localStorage.setItem('dashboardTab', btn.dataset.tab); }} catch (e) {{}}
+}}));
+let startTab = 'overview';
+try {{ startTab = localStorage.getItem('dashboardTab') || 'overview'; }} catch (e) {{}}
+selectTab(startTab);
+
 // Table
 const tb = document.querySelector('#tbl tbody');
 for (const r of DATA.table) {{
@@ -435,23 +503,61 @@ function ssFactor(age) {{
   return 1 + months * (2/3)/100;
 }}
 
+// ---- Persist planning inputs across page refreshes (localStorage; this is a
+// local file opened offline, so nothing leaves the browser).
+const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-contrib', 'p-contrib-until',
+  'p-withdraw', 'p-infl', 'p-age', 'p-age2', 'p-ss-age', 'p-ss-age2',
+  'p-ss-benefit', 'p-ss-benefit2'];
+const PLAN_STORAGE_KEY = 'financialPlanningInputs.v1';
+
+function loadPlanInputs() {{
+  try {{
+    const saved = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY) || '{{}}');
+    PLAN_FIELDS.forEach(id => {{ if (saved[id] != null) gid(id).value = saved[id]; }});
+    if (typeof saved['p-two-person'] === 'boolean') gid('p-two-person').checked = saved['p-two-person'];
+  }} catch (e) {{}}
+}}
+function savePlanInputs() {{
+  try {{
+    const out = {{}};
+    PLAN_FIELDS.forEach(id => {{ out[id] = gid(id).value; }});
+    out['p-two-person'] = gid('p-two-person').checked;
+    localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(out));
+  }} catch (e) {{}}
+}}
+loadPlanInputs();
+
+// Hide partner-only fields in single-person mode.
+const p2Fields = document.querySelectorAll('.p2-field');
+function updateTwoPerson() {{
+  const on = gid('p-two-person').checked;
+  p2Fields.forEach(el => {{ el.style.display = on ? '' : 'none'; }});
+}}
+updateTwoPerson();
+
 function buildProjection() {{
   const endYear = Math.max(thisYear + 1, END_YEAR);
-  const r = (+gid('p-return').value || 0) / 100;
+  const twoPerson = gid('p-two-person').checked;
+  const r = (+gid('p-return').value || 0) / 100;                  // return while still saving
+  const rRetired = (+gid('p-return-retired').value || 0) / 100;   // more conservative post-retirement
   const c = +gid('p-contrib').value || 0;
   const wPct = (+gid('p-withdraw').value || 0) / 100;  // % of the nest egg drawn per year
   const infl = (+gid('p-infl').value || 0) / 100;
   const years = endYear - thisYear;
   // Contributions stop after this many years, then the balance keeps compounding.
   const tStop = Math.max(0, Math.min(years, (+gid('p-contrib-until').value || endYear) - thisYear));
-  // Social Security (max earner): benefit from the SSA max-at-FRA, scaled by claiming age.
-  const FRA_MAX_ANNUAL = 48216;            // ~SSA max of $4,018/mo at FRA (2025), today's $
+  // Social Security: each person's own estimated benefit at full retirement age (67),
+  // scaled by their own claiming age. Spouses often claim at different ages (e.g. the
+  // lower earner claims early while the higher earner delays to 70), so both the age
+  // and the benefit estimate are tracked per person rather than assumed shared/maxed.
   const curAge = +gid('p-age').value || 0;
   const curAge2 = +gid('p-age2').value || 0;
   const ssStartAge = +gid('p-ss-age').value || 65;
-  const ssAnnual = FRA_MAX_ANNUAL * ssFactor(ssStartAge);   // per person, today's $
-  const ssY1 = thisYear + Math.max(0, ssStartAge - curAge);   // when person 1 claims
-  const ssY2 = thisYear + Math.max(0, ssStartAge - curAge2);  // when person 2 claims
+  const ssStartAge2 = +gid('p-ss-age2').value || 65;
+  const ssAnnual = (+gid('p-ss-benefit').value || 0) * 12 * ssFactor(ssStartAge);
+  const ssAnnual2 = twoPerson ? (+gid('p-ss-benefit2').value || 0) * 12 * ssFactor(ssStartAge2) : 0;
+  const ssY1 = thisYear + Math.max(0, ssStartAge - curAge);    // when person 1 claims
+  const ssY2 = thisYear + Math.max(0, ssStartAge2 - curAge2);  // when person 2 claims
 
   // The withdrawal rate is applied once, to the balance the year drawdown starts;
   // that fixes the spending in today's dollars for the rest of the projection.
@@ -460,15 +566,15 @@ function buildProjection() {{
   let bal = anchorVal, depletedYear = null;
   for (let t = 1; t <= years; t++) {{
     const ms = Date.UTC(thisYear + t, anchorDate.getUTCMonth(), anchorDate.getUTCDate());
-    bal *= (1 + r);                          // one year of growth
+    bal *= (1 + (t <= tStop ? r : rRetired));   // glide to a more conservative return after retirement
     if (t <= tStop) {{
       bal += c;                              // accumulation: add contribution (end of year)
       if (t === tStop) W = wPct * bal / Math.pow(1 + infl, t);   // rate × nest egg, today's $
     }} else {{
       // Drawdown: spend W (today's $); each person's SS offsets it once they claim.
       let ssReal = 0;
-      if (curAge + t >= ssStartAge) ssReal += ssAnnual;    // person 1 receiving
-      if (curAge2 + t >= ssStartAge) ssReal += ssAnnual;   // person 2 receiving
+      if (curAge + t >= ssStartAge) ssReal += ssAnnual;                   // person 1 receiving
+      if (twoPerson && curAge2 + t >= ssStartAge2) ssReal += ssAnnual2;   // person 2 receiving
       const netReal = Math.max(0, W - ssReal);
       bal -= netReal * Math.pow(1 + infl, t); // remaining need, inflated to year t
       if (bal <= 0) {{ bal = 0; if (depletedYear === null) depletedYear = thisYear + t; }}
@@ -497,7 +603,7 @@ function buildProjection() {{
 
   // One bullet per assumption, so the line stays scannable as inputs change.
   const drawYear = thisYear + tStop + 1;              // first year of drawdown
-  const bits = [(r * 100).toFixed(1) + '%/yr return',
+  const bits = [(r * 100).toFixed(1) + '%/yr while saving', (rRetired * 100).toFixed(1) + '%/yr in retirement',
                 (infl * 100).toFixed(1) + '%/yr inflation'];
   if (c) bits.push(usd(c) + '/yr added through ' + (thisYear + tStop));
   if (W && tStop < years) {{
@@ -506,13 +612,13 @@ function buildProjection() {{
     bits.push((wPct * 100).toFixed(2) + '% withdrawal = ' + usd(W) + "/yr today's $ from "
       + drawYear + ' (' + usd(nomLast) + '/yr nominal by ' + endYear + ')');
   }}
-  bits.push('Social Security ' + usd(ssAnnual) + '/yr each at ' + ssStartAge + ' ('
-    + Math.min(ssY1, ssY2) + ' & ' + Math.max(ssY1, ssY2) + '), '
-    + usd(2 * ssAnnual) + "/yr combined in today's $");
+  bits.push('Social Security: ' + usd(ssAnnual) + '/yr at ' + ssStartAge + ' (you, from ' + ssY1 + ')'
+    + (twoPerson ? ' + ' + usd(ssAnnual2) + '/yr at ' + ssStartAge2 + ' (partner, from ' + ssY2 + ')' : '')
+    + ' = ' + usd(ssAnnual + ssAnnual2) + "/yr combined in today's $");
   gid('proj-assume').textContent = bits.join(' · ');
 }}
-['p-return','p-contrib','p-contrib-until','p-withdraw','p-infl','p-age','p-age2','p-ss-age'].forEach(
-  id => gid(id).addEventListener('input', buildProjection));
+PLAN_FIELDS.forEach(id => gid(id).addEventListener('input', () => {{ savePlanInputs(); buildProjection(); }}));
+gid('p-two-person').addEventListener('change', () => {{ updateTwoPerson(); savePlanInputs(); buildProjection(); }});
 buildProjection();
 </script>
 """
