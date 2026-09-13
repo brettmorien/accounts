@@ -114,27 +114,56 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
     # Order accounts by latest known value, descending (largest at stack bottom).
     latest_val = {aid: next((v for v in reversed(locf[aid]) if v is not None), 0.0)
                   for aid in locf}
-    ordered = sorted(locf.keys(), key=lambda a: latest_val[a], reverse=True)
+    acct_ordered = sorted(locf.keys(), key=lambda a: latest_val[a], reverse=True)
 
-    # Cumulative (stacked) series, bottom-to-top: cum[i] = sum of first i+1 accts.
+    # Composition grouping: an institution that handed off from one blended
+    # history series to several live accounts would otherwise show one band
+    # vanish while several new ones appear at the same instant. The import
+    # files never carried per-account detail to begin with, so there is no
+    # true per-account split for the pre-handoff period anyway -- group those
+    # live accounts back under the institution for the chart (they still
+    # appear individually in the Accounts table below).
+    retired_insts = {_inst_key(accounts.get(aid, {}).get("org")) for aid in retire}
+    def _comp_group(aid: str) -> str:
+        key = _inst_key(accounts.get(aid, {}).get("org"))
+        return f"inst:{key}" if key in retired_insts else aid
+
+    group_members: Dict[str, List[str]] = defaultdict(list)
+    for aid in locf:
+        group_members[_comp_group(aid)].append(aid)
+
+    def _group_label(members: List[str]) -> str:
+        if len(members) == 1:
+            return _account_label(members[0], accounts)
+        for aid in members:  # prefer the retired placeholder's clean org name
+            if aid in retire:
+                return accounts.get(aid, {}).get("org") or _account_label(aid, accounts)
+        return accounts.get(members[0], {}).get("org") or members[0]
+
+    group_locf = {gkey: [sum((locf[aid][i] or 0.0) for aid in members) for i in range(len(dates))]
+                  for gkey, members in group_members.items()}
+    comp_ordered = sorted(group_locf.keys(), key=lambda g: group_locf[g][-1] if dates else 0.0,
+                          reverse=True)
+
+    # Cumulative (stacked) series, bottom-to-top: cum[i] = sum of first i+1 groups.
     cum: List[List[float]] = []
     running = [0.0] * len(dates)
-    for aid in ordered:
-        running = [running[i] + (locf[aid][i] or 0.0) for i in range(len(dates))]
+    for gkey in comp_ordered:
+        running = [running[i] + group_locf[gkey][i] for i in range(len(dates))]
         cum.append(list(running))
 
     # Emit in *draw order* (tallest band first so opaque fills stack correctly).
     comp_labels, comp_colors, comp_cumulative, comp_contrib = [], [], [], []
-    for k in reversed(range(len(ordered))):
-        aid = ordered[k]
-        comp_labels.append(_account_label(aid, accounts))
+    for k in reversed(range(len(comp_ordered))):
+        gkey = comp_ordered[k]
+        comp_labels.append(_group_label(group_members[gkey]))
         comp_colors.append(_PALETTE[k % len(_PALETTE)])
         comp_cumulative.append([round(x, 2) for x in cum[k]])
-        comp_contrib.append([round(locf[aid][i] or 0.0, 2) for i in range(len(dates))])
+        comp_contrib.append([round(v, 2) for v in group_locf[gkey]])
 
     # Latest-balances table: current accounts only (retired history is superseded).
     table = []
-    for aid in ordered:
+    for aid in acct_ordered:
         if aid in retire:
             continue
         series = by_acct[aid]
