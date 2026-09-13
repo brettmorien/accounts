@@ -323,9 +323,11 @@ def _uplot_html(model: dict) -> str:
        <div class="plan-section"><div class="plan-label">Social Security</div>
          <div class="controls">
            <label>Your benefit $/mo at FRA <input type="number" id="p-ss-benefit" value="4018" step="50" min="0"></label>
-           <label>Your claiming age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70"></label>
+           <label>Your claiming age <input type="number" id="p-ss-age" value="65" step="1" min="62" max="70">
+                  = <b id="p-ss-mo"></b>/mo</label>
            <label class="p2-field">Partner's benefit $/mo at FRA <input type="number" id="p-ss-benefit2" value="4018" step="50" min="0"></label>
-           <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70"></label>
+           <label class="p2-field">Partner's claiming age <input type="number" id="p-ss-age2" value="65" step="1" min="62" max="70">
+                  = <b id="p-ss-mo2"></b>/mo</label>
          </div>
          <div class="hint">Defaults to the 2025 maximum ($4,018/mo at full retirement age);
          use the estimate on your ssa.gov statement for an accurate projection. Full retirement
@@ -582,6 +584,10 @@ function buildProjection() {{
   const ssAnnual2 = twoPerson ? (+gid('p-ss-benefit2').value || 0) * 12 * ssFactor(ssStartAge2, fra2) : 0;
   const ssY1 = thisYear + Math.max(0, ssStartAge - curAge);    // when person 1 claims
   const ssY2 = thisYear + Math.max(0, ssStartAge2 - curAge2);  // when person 2 claims
+  // Live readout right next to the claiming-age input, so the early/delayed
+  // adjustment is visible immediately instead of buried in the summary text.
+  gid('p-ss-mo').textContent = usd(ssAnnual / 12);
+  gid('p-ss-mo2').textContent = usd(ssAnnual2 / 12);
 
   // The withdrawal rate/amount is fixed once, to the balance the year drawdown starts
   // (in today's $); that fixes spending for the rest of the projection. Percent and
