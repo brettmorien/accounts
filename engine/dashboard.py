@@ -349,7 +349,10 @@ def _uplot_html(model: dict) -> str:
        <div class="plan-section"><div class="plan-label">Participants</div>
          <div class="controls">
            <label><input type="checkbox" id="p-two-person" checked> Planning with a partner</label>
+           <label>Starting balance adjustment $ <input type="number" id="p-balance-adj" value="0" step="1000"></label>
          </div>
+         <div class="hint">Add or subtract from today's tracked total for this projection only
+         &mdash; e.g. assets not synced here. Can be negative.</div>
          <div class="person-row">
            <span class="person-tag">You</span>
            <label>Age <input type="number" id="p-age" value="48" step="1" min="18" max="90"></label>
@@ -603,8 +606,8 @@ function ssFactor(age, fra) {{
 
 // ---- Persist planning inputs across page refreshes (localStorage; this is a
 // local file opened offline, so nothing leaves the browser).
-const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-bucket-return', 'p-contrib', 'p-contrib2',
-  'p-withdraw', 'p-withdraw-amt', 'p-infl', 'p-age', 'p-age2',
+const PLAN_FIELDS = ['p-return', 'p-return-retired', 'p-bucket-return', 'p-balance-adj',
+  'p-contrib', 'p-contrib2', 'p-withdraw', 'p-withdraw-amt', 'p-infl', 'p-age', 'p-age2',
   'p-retire-age', 'p-retire-age2', 'p-income', 'p-income2', 'p-ss-age', 'p-ss-age2'];
 const PLAN_STORAGE_KEY = 'financialPlanningInputs.v1';
 let withdrawMode = 'pct';   // 'pct' or 'amount' -- whichever field the user edited last
@@ -642,6 +645,9 @@ function buildProjection() {{
   const r = (+gid('p-return').value || 0) / 100;                  // return while still saving
   const rRetired = (+gid('p-return-retired').value || 0) / 100;   // more conservative post-retirement
   const bucketReturn = (+gid('p-bucket-return').value || 0) / 100; // safer rate for the bridge bucket
+  // Today's tracked total, adjusted for anything not synced here (or double-
+  // counted); this projection-only starting point, not the tracked total itself.
+  const startBal = anchorVal + (+gid('p-balance-adj').value || 0);
   const c1 = +gid('p-contrib').value || 0;
   const c2 = twoPerson ? (+gid('p-contrib2').value || 0) : 0;
   const income1 = +gid('p-income').value || 0;                    // your earnings while still working
@@ -720,11 +726,11 @@ function buildProjection() {{
   // (in today's $); that fixes spending for the rest of the projection. Percent and
   // dollar amount are two views of the same number -- whichever the user last edited
   // (withdrawMode) drives it, and the other field is recomputed to match below.
-  let balAtRetireReal = anchorVal;   // today's-$ balance when drawdown starts
+  let balAtRetireReal = startBal;   // today's-$ balance when drawdown starts
   let W = (withdrawMode === 'amount') ? (+gid('p-withdraw-amt').value || 0) : wPct * balAtRetireReal;
   let bridgeReal = bridgeCost(W);                   // today's-$ size of the bridge bucket
   const futTs = [], nominal = [], real = [], bucketSeries = [];
-  let bal = anchorVal, bucketNom = 0, remNom = 0, depletedYear = null;
+  let bal = startBal, bucketNom = 0, remNom = 0, depletedYear = null;
   if (tFirst === 0) {{   // someone has already retired today: size the bucket now
     bucketNom = Math.min(bridgeReal, balAtRetireReal);
     remNom = bal - bucketNom;
@@ -778,8 +784,8 @@ function buildProjection() {{
     bucketSeries.push(bucketNom > 0 ? bucketNom / Math.pow(1 + infl, t) : null);
   }}
   const nHist = DATA.x.length;
-  const nom = DATA.x.map(()=>null); nom[nHist - 1] = anchorVal;   // anchor at latest point
-  const rl  = DATA.x.map(()=>null); rl[nHist - 1]  = anchorVal;
+  const nom = DATA.x.map(()=>null); nom[nHist - 1] = startBal;   // anchor at the (adjusted) latest point
+  const rl  = DATA.x.map(()=>null); rl[nHist - 1]  = startBal;
   const bkt = DATA.x.map(()=>null); bkt[nHist - 1] = anchorBucketReal;
   uProj.setData([ DATA.x.concat(futTs),
                   DATA.total.concat(futTs.map(()=>null)),
@@ -797,8 +803,8 @@ function buildProjection() {{
   }}
   gid('p-withdraw-mo').textContent = usd(W / 12);
 
-  const endNom = nominal.length ? nominal[nominal.length - 1] : anchorVal;
-  const endReal = real.length ? real[real.length - 1] : anchorVal;
+  const endNom = nominal.length ? nominal[nominal.length - 1] : startBal;
+  const endReal = real.length ? real[real.length - 1] : startBal;
   const headline = gid('proj-headline');
   headline.textContent = depletedYear
     ? '⚠ Runs out in ' + depletedYear
