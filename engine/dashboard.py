@@ -657,6 +657,12 @@ function buildProjection() {{
   const years = endYear - thisYear;
   const curAge = +gid('p-age').value || 0;
   const curAge2 = +gid('p-age2').value || 0;
+  // Retirement age can't be earlier than the person's current age. Keep the
+  // field's floor in sync live; the actual value is only clamped on blur (see
+  // below) so a keystroke passing through a too-low intermediate digit (e.g.
+  // typing "70" via "7") doesn't get corrected out from under the user.
+  gid('p-retire-age').min = curAge;
+  gid('p-retire-age2').min = curAge2;
   // Each person keeps contributing until THEIR OWN retirement age, so the still-working
   // partner's saving continues through any gap between the two retirement dates. The
   // household starts drawing down as soon as the FIRST person retires (tFirst) -- the
@@ -841,6 +847,20 @@ PLAN_FIELDS.filter(id => id !== 'p-withdraw' && id !== 'p-withdraw-amt').forEach
 gid('p-withdraw').addEventListener('input', () => {{ withdrawMode = 'pct'; buildProjection(); savePlanInputs(); }});
 gid('p-withdraw-amt').addEventListener('input', () => {{ withdrawMode = 'amount'; buildProjection(); savePlanInputs(); }});
 gid('p-two-person').addEventListener('change', () => {{ updateTwoPerson(); buildProjection(); savePlanInputs(); }});
+// On leaving either field, clamp retirement age up to current age if it's now
+// too low (covers both editing retirement age down and raising age past it).
+function clampRetireAge(retireId, ageId) {{
+  const age = +gid(ageId).value || 0;
+  if (+gid(retireId).value < age) {{
+    gid(retireId).value = age;
+    buildProjection();
+    savePlanInputs();
+  }}
+}}
+gid('p-retire-age').addEventListener('blur', () => clampRetireAge('p-retire-age', 'p-age'));
+gid('p-age').addEventListener('blur', () => clampRetireAge('p-retire-age', 'p-age'));
+gid('p-retire-age2').addEventListener('blur', () => clampRetireAge('p-retire-age2', 'p-age2'));
+gid('p-age2').addEventListener('blur', () => clampRetireAge('p-retire-age2', 'p-age2'));
 buildProjection();
 </script>
 """
