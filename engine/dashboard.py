@@ -69,12 +69,15 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
     for r in balances:
         acct_sources[r["account_id"]].add(r.get("source", ""))
     agg_first_inst: Dict[str, str] = {}
+    agg_last_inst: Dict[str, str] = {}
     for r in balances:
         if r.get("source") == "aggregator":
             key = _inst_key(accounts.get(r["account_id"], {}).get("org"))
             if key:
                 cur = agg_first_inst.get(key)
                 agg_first_inst[key] = min(cur, r["as_of"]) if cur else r["as_of"]
+                cur_last = agg_last_inst.get(key)
+                agg_last_inst[key] = max(cur_last, r["as_of"]) if cur_last else r["as_of"]
     retire: Dict[str, str] = {}
     for aid, srcs in acct_sources.items():
         # Only a pure-history account (no live rows of its own) whose institution
@@ -166,6 +169,14 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
     # silently span anywhere from a day to months and wasn't comparable
     # between rows. A stale connection honestly shows $0/0% (no new
     # information), which the "As of" date and hover tooltip make clear.
+    # A connection is flagged "stale" when its institution has an aggregator
+    # link at all but hasn't reported in well beyond the weekly sync cadence --
+    # a strong signal the link itself needs re-authentication (see
+    # agg_last_inst above), independent of any manual/import correction that
+    # might make the row's own "as of" date look fresh.
+    STALE_DAYS = 14
+    today_ref = dt.datetime.strptime(dates[-1], "%Y-%m-%d") if dates else None
+
     table = []
     for gkey in comp_ordered:
         members = group_members[gkey]
@@ -182,6 +193,14 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
         prev = group_locf[gkey][prev_i] if prev_i is not None else None
         delta = latest - prev if prev is not None else None
         pct = (delta / prev * 100.0) if prev else None
+
+        inst_key = _inst_key(accounts.get(members[0], {}).get("org"))
+        last_agg = agg_last_inst.get(inst_key)
+        stale_days = (today_ref - dt.datetime.strptime(last_agg, "%Y-%m-%d")).days \
+            if (last_agg and today_ref) else None
+        if stale_days is not None and stale_days < STALE_DAYS:
+            stale_days = None
+
         table.append({
             "label": _group_label(members),
             "as_of": as_of,
@@ -189,6 +208,7 @@ def _build(balances: List[dict], accounts: Dict[str, dict]) -> dict:
             "balance": round(latest, 2),
             "delta": round(delta, 2) if delta is not None else None,
             "pct": round(pct, 2) if pct is not None else None,
+            "stale_days": stale_days,
         })
 
     x = [int(dt.datetime.strptime(d, "%Y-%m-%d")
@@ -288,6 +308,7 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
         font-size: 12px; margin: 6px 0; }}
   .person-row .person-tag {{ font-weight: 700; min-width: 52px; color: #52525b; }}
   .person-row label {{ display: inline-flex; align-items: center; gap: 6px; }}
+  .stale-badge {{ cursor: help; color: #b45309; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
@@ -300,6 +321,7 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
     .tab-btn.active {{ color: #e4e4e7; }}
     .plan-section .plan-label {{ color: #a1a1aa; }}
     .person-row .person-tag {{ color: #d4d4d8; }}
+    .stale-badge {{ color: #fbbf24; }}
   }}
   {head}
 </style></head>
@@ -331,7 +353,7 @@ def _uplot_html(model: dict) -> str:
        <div id="comp-legend" class="legend"></div></div>
   <div class="card"><div class="muted">Accounts</div>
        <div class="hint">Change is day-over-day &mdash; a stale connection shows $0/0% rather
-       than an old move.</div>
+       than an old move. &#9888; means no aggregator update in 14+ days.</div>
        <table id="tbl"><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody></tbody></table></div>
   </div>
@@ -523,8 +545,11 @@ for (const r of DATA.table) {{
   const cls = r.delta==null ? '' : (r.delta>=0 ? 'up' : 'down');
   const sign = r.delta==null ? '' : (r.delta>=0 ? '+' : '');
   const changeTitle = r.prev_as_of ? ` title="vs ${{usd(r.balance - r.delta)}} on ${{r.prev_as_of}}"` : '';
+  const staleBadge = r.stale_days != null
+    ? ` <span class="stale-badge" title="No aggregator update in ${{r.stale_days}} days -- the connection may need re-authenticating">⚠</span>`
+    : '';
   tb.insertAdjacentHTML('beforeend',
-    `<tr><td>${{r.label}}</td><td class="muted">${{r.as_of}}</td>`
+    `<tr><td>${{r.label}}${{staleBadge}}</td><td class="muted">${{r.as_of}}</td>`
     + `<td>${{usd(r.balance)}}</td>`
     + `<td class="${{cls}}"${{changeTitle}}>${{r.delta==null?'—':sign+usd(r.delta)}}</td>`
     + `<td class="${{cls}}"${{changeTitle}}>${{r.pct==null?'—':sign+r.pct+'%'}}</td></tr>`);
@@ -887,7 +912,9 @@ def _svg_html(model: dict) -> str:
         cls = "" if r["delta"] is None else ("up" if r["delta"] >= 0 else "down")
         delta = "—" if r["delta"] is None else f"{r['delta']:+,.0f}"
         pct = "—" if r["pct"] is None else f"{r['pct']:+.2f}%"
-        rows += (f"<tr><td>{html.escape(r['label'])}</td>"
+        stale = (f" <span class='stale-badge' title='No aggregator update in "
+                 f"{r['stale_days']} days'>&#9888;</span>") if r.get("stale_days") is not None else ""
+        rows += (f"<tr><td>{html.escape(r['label'])}{stale}</td>"
                  f"<td class='muted'>{r['as_of']}</td>"
                  f"<td>${r['balance']:,.0f}</td>"
                  f"<td class='{cls}'>{delta}</td><td class='{cls}'>{pct}</td></tr>")
@@ -906,7 +933,7 @@ def _svg_html(model: dict) -> str:
        <div class="big">${model['grand_total']:,.0f}</div>{svg}</div>
   <div class="card"><div class="muted">Accounts</div>
        <div class="hint">Change is day-over-day &mdash; a stale connection shows $0/0% rather
-       than an old move.</div>
+       than an old move. &#9888; means no aggregator update in 14+ days.</div>
        <table><thead><tr><th>Account</th><th>As of</th><th>Balance</th>
        <th>Change</th><th>%</th></tr></thead><tbody>{rows}</tbody></table></div>
 """
