@@ -309,6 +309,15 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
   .person-row .person-tag {{ font-weight: 700; min-width: 52px; color: #52525b; }}
   .person-row label {{ display: inline-flex; align-items: center; gap: 6px; }}
   .stale-badge {{ cursor: help; color: #b45309; }}
+  .range-bar {{ display: flex; justify-content: space-between; gap: 2px;
+        border-top: 1px solid #e4e4e7; padding: 10px 0 8px; margin-top: 10px;
+        overflow-x: auto; }}
+  .range-btn {{ background: none; border: none; cursor: pointer; font: inherit;
+        font-size: 13px; font-weight: 500; color: #3f3f46; padding: 5px 11px;
+        border-radius: 999px; flex: none; }}
+  .range-btn:hover {{ background: #f4f4f5; }}
+  .range-btn.active {{ background: #e4e4e7; color: #18181b; font-weight: 700; }}
+  .range-chg {{ font-size: 13px; margin-top: 2px; }}
   @media (prefers-color-scheme: dark) {{
     body {{ background: #0b0b0e; color: #e4e4e7; }}
     .card {{ background: #17171b; border-color: #27272a; }}
@@ -322,6 +331,10 @@ def _shell(title: str, body: str, head: str = "", script: str = "") -> str:
     .plan-section .plan-label {{ color: #a1a1aa; }}
     .person-row .person-tag {{ color: #d4d4d8; }}
     .stale-badge {{ color: #fbbf24; }}
+    .range-bar {{ border-color: #27272a; }}
+    .range-btn {{ color: #d4d4d8; }}
+    .range-btn:hover {{ background: #27272a; }}
+    .range-btn.active {{ background: #3f3f46; color: #fafafa; }}
   }}
   {head}
 </style></head>
@@ -346,6 +359,8 @@ def _uplot_html(model: dict) -> str:
   <div id="tab-overview" class="tab-panel">
   <div class="card"><div class="muted">Total net worth</div>
        <div class="big" id="grand"></div>
+       <div class="range-chg" id="range-chg"></div>
+       <div class="range-bar" id="range-bar"></div>
        <div id="chart-total"></div></div>
   <div class="card"><div class="muted">Composition over time</div>
        <div class="hint">Click an account to show only that one; click it again to restore all.</div>
@@ -459,7 +474,7 @@ function mk(el, series, data, extra) {{
 }}
 
 // Total net worth
-mk(document.getElementById('chart-total'),
+const uTotal = mk(document.getElementById('chart-total'),
    [ {{}}, {{ label:'Total', stroke:'#2563eb', width:2,
              fill:'rgba(37,99,235,0.14)', value:(u,v)=>usd(v) }} ],
    [ DATA.x, DATA.total ]);
@@ -508,6 +523,7 @@ function compToggle(s) {{
       uComp.setData(nd);
     }}
   }});
+  applyRange(curRange);                  // setData resets the x scale
   legendBox.querySelectorAll('.chip').forEach(c => {{
     const sel = !restore && +c.dataset.s === s;
     c.classList.toggle('sel', sel);
@@ -522,6 +538,67 @@ function compHoverValues(u) {{
     c.querySelector('.cv').textContent = (idx == null) ? '' : usd(C.contrib[k][idx]);
   }});
 }}
+
+// ---- Time range pills (Overview charts). Selection persists across refreshes.
+// Ranges are anchored to the latest data point, not "now", so a stale sync
+// still shows a full window.
+const RANGES = [
+  ['1W', 'past week', d => d.setUTCDate(d.getUTCDate() - 7)],
+  ['1M', 'past month', d => d.setUTCMonth(d.getUTCMonth() - 1)],
+  ['3M', 'past 3 months', d => d.setUTCMonth(d.getUTCMonth() - 3)],
+  ['6M', 'past 6 months', d => d.setUTCMonth(d.getUTCMonth() - 6)],
+  ['YTD', 'year to date', d => d.setUTCMonth(0, 1)],
+  ['1Y', 'past year', d => d.setUTCFullYear(d.getUTCFullYear() - 1)],
+  ['2Y', 'past 2 years', d => d.setUTCFullYear(d.getUTCFullYear() - 2)],
+  ['5Y', 'past 5 years', d => d.setUTCFullYear(d.getUTCFullYear() - 5)],
+  ['10Y', 'past 10 years', d => d.setUTCFullYear(d.getUTCFullYear() - 10)],
+  ['ALL', 'all time', null],
+];
+const RANGE_KEY = 'dashboardRange';
+const xFirst = DATA.x[0], xLast = DATA.x[DATA.x.length - 1];
+const rangeBar = document.getElementById('range-bar');
+let curRange = 'ALL';
+function rangeMin(key) {{
+  const r = RANGES.find(r => r[0] === key);
+  if (!r || !r[2]) return xFirst;
+  const d = new Date(xLast * 1000);
+  r[2](d);
+  // Keep at least two points visible so a short window still draws a line.
+  const floor = DATA.x.length > 1 ? DATA.x[DATA.x.length - 2] : xFirst;
+  return Math.max(xFirst, Math.min(Math.floor(d / 1000), floor));
+}}
+function applyRange(key) {{
+  const min = rangeMin(key);
+  for (const u of [uTotal, uComp]) u.setScale('x', {{ min, max: xLast }});
+  rangeBar.querySelectorAll('.range-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.range === key));
+  // Change over the window, from the first data point inside it.
+  const i0 = DATA.x.findIndex(t => t >= min);
+  const start = DATA.total[i0], delta = DATA.grand_total - start;
+  const pct = start ? (delta / Math.abs(start) * 100) : null;
+  const chg = document.getElementById('range-chg');
+  chg.className = 'range-chg ' + (delta >= 0 ? 'up' : 'down');
+  chg.textContent = (delta >= 0 ? '+' : '-') + usd(Math.abs(delta))
+    + (pct == null ? '' : ` (${{delta >= 0 ? '+' : ''}}${{pct.toFixed(2)}}%)`)
+    + ' ' + RANGES.find(r => r[0] === key)[1];
+}}
+for (const [key] of RANGES) {{
+  const b = document.createElement('button');
+  b.className = 'range-btn';
+  b.dataset.range = key;
+  b.textContent = key;
+  b.addEventListener('click', () => {{
+    curRange = key;
+    applyRange(key);
+    try {{ localStorage.setItem(RANGE_KEY, key); }} catch (e) {{}}
+  }});
+  rangeBar.appendChild(b);
+}}
+try {{
+  const saved = localStorage.getItem(RANGE_KEY);
+  if (saved && RANGES.some(r => r[0] === saved)) curRange = saved;
+}} catch (e) {{}}
+applyRange(curRange);
 
 // ---- Tabs: Overview vs Planning. Selection persists across refreshes.
 const tabBtns = document.querySelectorAll('.tab-btn');
